@@ -1,6 +1,6 @@
 {
   "name": "@jupyterlab/htmlviewer-extension",
-  "version": "2.0.0-rc.2",
+  "version": "3.0.0-rc.4",
   "description": "JupyterLab extension to render HTML files",
   "keywords": [
     "jupyter",
@@ -16,32 +16,33 @@
   },
   "license": "BSD-3-Clause",
   "author": "Project Jupyter Contributors",
-  "files": [
-    "lib/**/*.{d.ts,eot,gif,html,jpg,js,js.map,json,png,svg,woff2,ttf}",
-    "style/**/*.{css,eot,gif,html,jpg,json,png,svg,woff2,ttf}"
-  ],
   "sideEffects": [
     "style/**/*"
   ],
   "main": "lib/index.js",
   "types": "lib/index.d.ts",
   "style": "style/index.css",
+  "files": [
+    "lib/**/*.{d.ts,eot,gif,html,jpg,js,js.map,json,png,svg,woff2,ttf}",
+    "style/**/*.{css,eot,gif,html,jpg,json,png,svg,woff2,ttf}"
+  ],
   "scripts": {
     "build": "tsc -b",
-    "clean": "rimraf lib",
+    "clean": "rimraf lib && rimraf tsconfig.tsbuildinfo",
     "prepublishOnly": "npm run build",
     "watch": "tsc -w"
   },
   "dependencies": {
-    "@jupyterlab/application": "^2.0.0-rc.2",
-    "@jupyterlab/apputils": "^2.0.0-rc.2",
-    "@jupyterlab/docregistry": "^2.0.0-rc.2",
-    "@jupyterlab/htmlviewer": "^2.0.0-rc.2",
-    "@jupyterlab/ui-components": "^2.0.0-rc.3"
+    "@jupyterlab/application": "^3.0.0-rc.4",
+    "@jupyterlab/apputils": "^3.0.0-rc.4",
+    "@jupyterlab/docregistry": "^3.0.0-rc.4",
+    "@jupyterlab/htmlviewer": "^3.0.0-rc.4",
+    "@jupyterlab/translation": "^3.0.0-rc.4",
+    "@jupyterlab/ui-components": "^3.0.0-rc.4"
   },
   "devDependencies": {
     "rimraf": "~3.0.0",
-    "typescript": "~3.7.3"
+    "typescript": "~4.0.2"
   },
   "publishConfig": {
     "access": "public"

@@ -36,6 +36,8 @@ import { ISettingRegistry } from '@jupyterlab/settingregistry';
 
 import { IStatusBar } from '@jupyterlab/statusbar';
 
+import { ITranslator, TranslationBundle } from '@jupyterlab/translation';
+
 import { each, map, some, toArray } from '@lumino/algorithm';
 
 import { JSONExt } from '@lumino/coreutils';
@@ -62,6 +64,8 @@ namespace CommandIDs {
 
   export const rename = 'docmanager:rename';
 
+  export const del = 'docmanager:delete';
+
   export const restoreCheckpoint = 'docmanager:restore-checkpoint';
 
   export const save = 'docmanager:save';
@@ -85,7 +89,7 @@ const pluginId = '@jupyterlab/docmanager-extension:plugin';
 const docManagerPlugin: JupyterFrontEndPlugin<IDocumentManager> = {
   id: pluginId,
   provides: IDocumentManager,
-  requires: [ISettingRegistry],
+  requires: [ISettingRegistry, ITranslator],
   optional: [
     ILabStatus,
     ICommandPalette,
@@ -96,13 +100,14 @@ const docManagerPlugin: JupyterFrontEndPlugin<IDocumentManager> = {
   activate: (
     app: JupyterFrontEnd,
     settingRegistry: ISettingRegistry,
+    translator: ITranslator,
     status: ILabStatus | null,
     palette: ICommandPalette | null,
     labShell: ILabShell | null,
     mainMenu: IMainMenu | null,
     sessionDialogs: ISessionContextDialogs | null
   ): IDocumentManager => {
-    const { shell } = app;
+    const trans = translator.load('jupyterlab');
     const manager = app.serviceManager;
     const contexts = new WeakSet<DocumentRegistry.Context>();
     const opener: DocumentManager.IWidgetOpener = {
@@ -115,12 +120,12 @@ const docManagerPlugin: JupyterFrontEndPlugin<IDocumentManager> = {
           ...widget.title.dataset
         };
         if (!widget.isAttached) {
-          shell.add(widget, 'main', options || {});
+          app.shell.add(widget, 'main', options || {});
         }
-        shell.activateById(widget.id);
+        app.shell.activateById(widget.id);
 
         // Handle dirty state for open documents.
-        let context = docManager.contextForWidget(widget);
+        const context = docManager.contextForWidget(widget);
         if (context && !contexts.has(context)) {
           if (status) {
             handleContext(status, context);
@@ -137,7 +142,8 @@ const docManagerPlugin: JupyterFrontEndPlugin<IDocumentManager> = {
       opener,
       when,
       setBusy: (status && (() => status.setBusy())) ?? undefined,
-      sessionDialogs: sessionDialogs || undefined
+      sessionDialogs: sessionDialogs || undefined,
+      translator
     });
 
     // Register the file operations commands.
@@ -146,6 +152,7 @@ const docManagerPlugin: JupyterFrontEndPlugin<IDocumentManager> = {
       docManager,
       opener,
       settingRegistry,
+      translator,
       labShell,
       palette,
       mainMenu
@@ -221,7 +228,8 @@ const docManagerPlugin: JupyterFrontEndPlugin<IDocumentManager> = {
           .map(f => f.name)
           .join('    \n');
         // Generate the help string.
-        const description = `Overrides for the default viewers for file types.
+        const description = trans.__(
+          `Overrides for the default viewers for file types.
 Specify a mapping from file type name to document viewer name, for example:
 
 defaultViewers: {
@@ -232,32 +240,27 @@ If you specify non-existent file types or viewers, or if a viewer cannot
 open a given file type, the override will not function.
 
 Available viewers:
-${factories}
+%1
 
 Available file types:
-${fileTypes}`;
+%2`,
+          factories,
+          fileTypes
+        );
         const schema = JSONExt.deepCopy(plugin.schema);
         schema.properties!.defaultViewers.description = description;
         return { ...plugin, schema };
       }
     });
 
-    // callback to registry change that ensures not to invoke reload method when there is already a promise that is pending
-    let reloadSettingsRegistry = () => {
-      let promisePending = false;
-
-      return async () => {
-        if (!promisePending) {
-          promisePending = true;
-          await settingRegistry.reload(pluginId);
-          promisePending = false;
-        }
-      };
-    };
-
     // If the document registry gains or loses a factory or file type,
     // regenerate the settings description with the available options.
-    registry.changed.connect(reloadSettingsRegistry());
+    registry.changed.connect(() => settingRegistry.reload(pluginId));
+
+    docManager.mode = labShell!.mode;
+    labShell!.modeChanged.connect((_, args) => {
+      docManager.mode = args as string;
+    });
 
     return docManager;
   }
@@ -269,19 +272,20 @@ ${fileTypes}`;
 export const savingStatusPlugin: JupyterFrontEndPlugin<void> = {
   id: '@jupyterlab/docmanager-extension:saving-status',
   autoStart: true,
-  requires: [IDocumentManager, ILabShell],
+  requires: [IDocumentManager, ILabShell, ITranslator],
   optional: [IStatusBar],
   activate: (
     _: JupyterFrontEnd,
     docManager: IDocumentManager,
     labShell: ILabShell,
+    translator: ITranslator,
     statusBar: IStatusBar | null
   ) => {
     if (!statusBar) {
       // Automatically disable if statusbar missing
       return;
     }
-    const saving = new SavingStatus({ docManager });
+    const saving = new SavingStatus({ docManager, translator });
 
     // Keep the currently active widget synchronized.
     saving.model!.widget = labShell.currentWidget;
@@ -350,9 +354,12 @@ class RevertConfirmWidget extends Widget {
    */
   constructor(
     checkpoint: Contents.ICheckpointModel,
+    trans: TranslationBundle,
     fileType: string = 'notebook'
   ) {
-    super({ node: Private.createRevertConfirmNode(checkpoint, fileType) });
+    super({
+      node: Private.createRevertConfirmNode(checkpoint, fileType, trans)
+    });
   }
 }
 
@@ -377,12 +384,14 @@ function addCommands(
   docManager: IDocumentManager,
   opener: DocumentManager.IWidgetOpener,
   settingRegistry: ISettingRegistry,
+  translator: ITranslator,
   labShell: ILabShell | null,
   palette: ICommandPalette | null,
   mainMenu: IMainMenu | null
 ): void {
+  const trans = translator.load('jupyterlab');
   const { commands, shell } = app;
-  const category = 'File Operations';
+  const category = trans.__('File Operations');
   const isEnabled = () => {
     const { currentWidget } = shell;
     return !!(currentWidget && docManager.contextForWidget(currentWidget));
@@ -403,7 +412,7 @@ function addCommands(
 
   // If inside a rich application like JupyterLab, add additional functionality.
   if (labShell) {
-    addLabCommands(app, docManager, labShell, opener, palette);
+    addLabCommands(app, docManager, labShell, opener, translator, palette);
   }
 
   commands.addCommand(CommandIDs.deleteFile, {
@@ -422,10 +431,11 @@ function addCommands(
 
   commands.addCommand(CommandIDs.newUntitled, {
     execute: args => {
-      const errorTitle = (args['error'] as string) || 'Error';
+      // FIXME-TRANS: Localizing args['error']?
+      const errorTitle = (args['error'] as string) || trans.__('Error');
       const path =
         typeof args['path'] === 'undefined' ? '' : (args['path'] as string);
-      let options: Partial<Contents.ICreateOptions> = {
+      const options: Partial<Contents.ICreateOptions> = {
         type: args['type'] as Contents.ContentType,
         path
       };
@@ -478,13 +488,16 @@ function addCommands(
       });
     },
     icon: args => (args['icon'] as string) || '',
-    label: () => 'Open in New Browser Tab'
+    label: () => trans.__('Open in New Browser Tab')
   });
 
   commands.addCommand(CommandIDs.reload, {
     label: () =>
-      `Reload ${fileType(shell.currentWidget, docManager)} from Disk`,
-    caption: 'Reload contents from disk',
+      trans.__(
+        'Reload %1 from Disk',
+        fileType(shell.currentWidget, docManager)
+      ),
+    caption: trans.__('Reload contents from disk'),
     isEnabled,
     execute: () => {
       // Checks that shell.currentWidget is valid:
@@ -495,19 +508,21 @@ function addCommands(
       const type = fileType(shell.currentWidget!, docManager);
       if (!context) {
         return showDialog({
-          title: 'Cannot Reload',
-          body: 'No context found for current widget!',
-          buttons: [Dialog.okButton()]
+          title: trans.__('Cannot Reload'),
+          body: trans.__('No context found for current widget!'),
+          buttons: [Dialog.okButton({ label: trans.__('Ok') })]
         });
       }
       if (context.model.dirty) {
         return showDialog({
-          title: `Reload ${type} from Disk`,
-          body: `Are you sure you want to reload
-          the ${type} from the disk?`,
+          title: trans.__('Reload %1 from Disk', type),
+          body: trans.__(
+            'Are you sure you want to reload the %1 from the disk?',
+            type
+          ),
           buttons: [
-            Dialog.cancelButton(),
-            Dialog.warnButton({ label: 'Reload' })
+            Dialog.cancelButton({ label: trans.__('Cancel') }),
+            Dialog.warnButton({ label: trans.__('Reload') })
           ]
         }).then(result => {
           if (result.button.accept && !context.isDisposed) {
@@ -524,8 +539,11 @@ function addCommands(
 
   commands.addCommand(CommandIDs.restoreCheckpoint, {
     label: () =>
-      `Revert ${fileType(shell.currentWidget, docManager)} to Checkpoint`,
-    caption: 'Revert contents to previous checkpoint',
+      trans.__(
+        'Revert %1 to Checkpoint',
+        fileType(shell.currentWidget, docManager)
+      ),
+    caption: trans.__('Revert contents to previous checkpoint'),
     isEnabled,
     execute: () => {
       // Checks that shell.currentWidget is valid:
@@ -535,9 +553,9 @@ function addCommands(
       const context = docManager.contextForWidget(shell.currentWidget!);
       if (!context) {
         return showDialog({
-          title: 'Cannot Revert',
-          body: 'No context found for current widget!',
-          buttons: [Dialog.okButton()]
+          title: trans.__('Cannot Revert'),
+          body: trans.__('No context found for current widget!'),
+          buttons: [Dialog.okButton({ label: trans.__('Ok') })]
         });
       }
       return context.listCheckpoints().then(checkpoints => {
@@ -550,11 +568,11 @@ function addCommands(
         }
         const type = fileType(shell.currentWidget, docManager);
         return showDialog({
-          title: `Revert ${type} to checkpoint`,
-          body: new RevertConfirmWidget(lastCheckpoint, type),
+          title: trans.__('Revert %1 to checkpoint', type),
+          body: new RevertConfirmWidget(lastCheckpoint, trans, type),
           buttons: [
-            Dialog.cancelButton(),
-            Dialog.warnButton({ label: 'Revert' })
+            Dialog.cancelButton({ label: trans.__('Cancel') }),
+            Dialog.warnButton({ label: trans.__('Revert') })
           ]
         }).then(result => {
           if (context.isDisposed) {
@@ -572,25 +590,25 @@ function addCommands(
   });
 
   commands.addCommand(CommandIDs.save, {
-    label: () => `Save ${fileType(shell.currentWidget, docManager)}`,
-    caption: 'Save and create checkpoint',
+    label: () => trans.__('Save %1', fileType(shell.currentWidget, docManager)),
+    caption: trans.__('Save and create checkpoint'),
     isEnabled: isWritable,
     execute: () => {
       // Checks that shell.currentWidget is valid:
       if (isEnabled()) {
-        let context = docManager.contextForWidget(shell.currentWidget!);
+        const context = docManager.contextForWidget(shell.currentWidget!);
         if (!context) {
           return showDialog({
-            title: 'Cannot Save',
-            body: 'No context found for current widget!',
-            buttons: [Dialog.okButton()]
+            title: trans.__('Cannot Save'),
+            body: trans.__('No context found for current widget!'),
+            buttons: [Dialog.okButton({ label: trans.__('Ok') })]
           });
         }
         if (context.model.readOnly) {
           return showDialog({
-            title: 'Cannot Save',
-            body: 'Document is read-only',
-            buttons: [Dialog.okButton()]
+            title: trans.__('Cannot Save'),
+            body: trans.__('Document is read-only'),
+            buttons: [Dialog.okButton({ label: trans.__('Ok') })]
           });
         }
         return context
@@ -598,6 +616,7 @@ function addCommands(
           .then(() => context!.createCheckpoint())
           .catch(err => {
             // If the save was canceled by user-action, do nothing.
+            // FIXME-TRANS: Is this using the text on the button or?
             if (err.message === 'Cancel') {
               return;
             }
@@ -608,8 +627,8 @@ function addCommands(
   });
 
   commands.addCommand(CommandIDs.saveAll, {
-    label: () => 'Save All',
-    caption: 'Save all open documents',
+    label: () => trans.__('Save All'),
+    caption: trans.__('Save all open documents'),
     isEnabled: () => {
       return some(
         map(shell.widgets('main'), w => docManager.contextForWidget(w)),
@@ -631,18 +650,19 @@ function addCommands(
   });
 
   commands.addCommand(CommandIDs.saveAs, {
-    label: () => `Save ${fileType(shell.currentWidget, docManager)} As…`,
-    caption: 'Save with new path',
+    label: () =>
+      trans.__('Save %1 As…', fileType(shell.currentWidget, docManager)),
+    caption: trans.__('Save with new path'),
     isEnabled,
     execute: () => {
       // Checks that shell.currentWidget is valid:
       if (isEnabled()) {
-        let context = docManager.contextForWidget(shell.currentWidget!);
+        const context = docManager.contextForWidget(shell.currentWidget!);
         if (!context) {
           return showDialog({
-            title: 'Cannot Save',
-            body: 'No context found for current widget!',
-            buttons: [Dialog.okButton()]
+            title: trans.__('Cannot Save'),
+            body: trans.__('No context found for current widget!'),
+            buttons: [Dialog.okButton({ label: trans.__('Ok') })]
           });
         }
         return context.saveAs();
@@ -651,18 +671,18 @@ function addCommands(
   });
 
   commands.addCommand(CommandIDs.download, {
-    label: 'Download',
-    caption: 'Download the file to your computer',
+    label: trans.__('Download'),
+    caption: trans.__('Download the file to your computer'),
     isEnabled,
     execute: () => {
       // Checks that shell.currentWidget is valid:
       if (isEnabled()) {
-        let context = docManager.contextForWidget(shell.currentWidget!);
+        const context = docManager.contextForWidget(shell.currentWidget!);
         if (!context) {
           return showDialog({
-            title: 'Cannot Download',
-            body: 'No context found for current widget!',
-            buttons: [Dialog.okButton()]
+            title: trans.__('Cannot Download'),
+            body: trans.__('No context found for current widget!'),
+            buttons: [Dialog.okButton({ label: trans.__('OK') })]
           });
         }
         return context.download();
@@ -671,7 +691,7 @@ function addCommands(
   });
 
   commands.addCommand(CommandIDs.toggleAutosave, {
-    label: 'Autosave Documents',
+    label: trans.__('Autosave Documents'),
     isToggled: () => docManager.autosave,
     execute: () => {
       const value = !docManager.autosave;
@@ -717,8 +737,10 @@ function addLabCommands(
   docManager: IDocumentManager,
   labShell: ILabShell,
   opener: DocumentManager.IWidgetOpener,
+  translator: ITranslator,
   palette: ICommandPalette | null
 ): void {
+  const trans = translator.load('jupyterlab');
   const { commands } = app;
 
   // Returns the doc widget associated with the most recent contextmenu event.
@@ -742,7 +764,8 @@ function addLabCommands(
   };
 
   commands.addCommand(CommandIDs.clone, {
-    label: () => `New View for ${fileType(contextMenuWidget(), docManager)}`,
+    label: () =>
+      trans.__('New View for %1', fileType(contextMenuWidget(), docManager)),
     isEnabled,
     execute: args => {
       const widget = contextMenuWidget();
@@ -753,7 +776,7 @@ function addLabCommands(
         return;
       }
       // Clone the widget.
-      let child = docManager.cloneWidget(widget);
+      const child = docManager.cloneWidget(widget);
       if (child) {
         opener.open(child, options);
       }
@@ -761,23 +784,53 @@ function addLabCommands(
   });
 
   commands.addCommand(CommandIDs.rename, {
-    label: () => `Rename ${fileType(contextMenuWidget(), docManager)}…`,
+    label: () =>
+      trans.__('Rename %1…', fileType(contextMenuWidget(), docManager)),
     isEnabled,
     execute: () => {
       // Implies contextMenuWidget() !== null
       if (isEnabled()) {
-        let context = docManager.contextForWidget(contextMenuWidget()!);
+        const context = docManager.contextForWidget(contextMenuWidget()!);
         return renameDialog(docManager, context!.path);
       }
     }
   });
 
-  commands.addCommand(CommandIDs.showInFileBrowser, {
-    label: () => `Show in File Browser`,
+  commands.addCommand(CommandIDs.del, {
+    label: () =>
+      trans.__('Delete %1', fileType(contextMenuWidget(), docManager)),
     isEnabled,
     execute: async () => {
-      let widget = contextMenuWidget();
-      let context = widget && docManager.contextForWidget(widget);
+      // Implies contextMenuWidget() !== null
+      if (isEnabled()) {
+        const context = docManager.contextForWidget(contextMenuWidget()!);
+        if (!context) {
+          return;
+        }
+        const result = await showDialog({
+          title: trans.__('Delete'),
+          body: trans.__('Are you sure you want to delete %1', context.path),
+          buttons: [
+            Dialog.cancelButton({ label: trans.__('Cancel') }),
+            Dialog.warnButton({ label: trans.__('Delete') })
+          ]
+        });
+
+        if (result.button.accept) {
+          await app.commands.execute('docmanager:delete-file', {
+            path: context.path
+          });
+        }
+      }
+    }
+  });
+
+  commands.addCommand(CommandIDs.showInFileBrowser, {
+    label: () => trans.__('Show in File Browser'),
+    isEnabled,
+    execute: async () => {
+      const widget = contextMenuWidget();
+      const context = widget && docManager.contextForWidget(widget);
       if (!context) {
         return;
       }
@@ -794,14 +847,19 @@ function addLabCommands(
     rank: 1
   });
   app.contextMenu.addItem({
-    command: CommandIDs.clone,
+    command: CommandIDs.del,
     selector: '[data-type="document-title"]',
     rank: 2
   });
   app.contextMenu.addItem({
-    command: CommandIDs.showInFileBrowser,
+    command: CommandIDs.clone,
     selector: '[data-type="document-title"]',
     rank: 3
+  });
+  app.contextMenu.addItem({
+    command: CommandIDs.showInFileBrowser,
+    selector: '[data-type="document-title"]',
+    rank: 4
   });
 }
 
@@ -813,7 +871,7 @@ function handleContext(
   context: DocumentRegistry.Context
 ): void {
   let disposable: IDisposable | null = null;
-  let onStateChanged = (sender: any, args: IChangedArgs<any>) => {
+  const onStateChanged = (sender: any, args: IChangedArgs<any>) => {
     if (args.name === 'dirty') {
       if (args.newValue === true) {
         if (!disposable) {
@@ -849,24 +907,29 @@ namespace Private {
 
   export function createRevertConfirmNode(
     checkpoint: Contents.ICheckpointModel,
-    fileType: string
+    fileType: string,
+    trans: TranslationBundle
   ): HTMLElement {
-    let body = document.createElement('div');
-    let confirmMessage = document.createElement('p');
-    let confirmText = document.createTextNode(`Are you sure you want to revert
-      the ${fileType} to the latest checkpoint? `);
-    let cannotUndoText = document.createElement('strong');
-    cannotUndoText.textContent = 'This cannot be undone.';
+    const body = document.createElement('div');
+    const confirmMessage = document.createElement('p');
+    const confirmText = document.createTextNode(
+      trans.__(
+        'Are you sure you want to revert the %1 to the latest checkpoint? ',
+        fileType
+      )
+    );
+    const cannotUndoText = document.createElement('strong');
+    cannotUndoText.textContent = trans.__('This cannot be undone.');
 
     confirmMessage.appendChild(confirmText);
     confirmMessage.appendChild(cannotUndoText);
 
-    let lastCheckpointMessage = document.createElement('p');
-    let lastCheckpointText = document.createTextNode(
-      'The checkpoint was last updated at: '
+    const lastCheckpointMessage = document.createElement('p');
+    const lastCheckpointText = document.createTextNode(
+      trans.__('The checkpoint was last updated at: ')
     );
-    let lastCheckpointDate = document.createElement('p');
-    let date = new Date(checkpoint.last_modified);
+    const lastCheckpointDate = document.createElement('p');
+    const date = new Date(checkpoint.last_modified);
     lastCheckpointDate.style.textAlign = 'center';
     lastCheckpointDate.textContent =
       Time.format(date, 'dddd, MMMM Do YYYY, h:mm:ss a') +

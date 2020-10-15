@@ -16,13 +16,25 @@
       "path": "../coreutils"
     },
     {
+      "path": "../docregistry"
+    },
+    {
+      "path": "../filebrowser"
+    },
+    {
       "path": "../mainmenu"
+    },
+    {
+      "path": "../services"
     },
     {
       "path": "../settingregistry"
     },
     {
       "path": "../statedb"
+    },
+    {
+      "path": "../translation"
     },
     {
       "path": "../ui-components"

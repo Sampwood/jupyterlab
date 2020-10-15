@@ -23,11 +23,15 @@ import {
 
 import { ISettingRegistry } from '@jupyterlab/settingregistry';
 
+import { PathExt } from '@jupyterlab/coreutils';
+import { ITranslator } from '@jupyterlab/translation';
+
 /**
  * The command IDs used by the markdownviewer plugin.
  */
 namespace CommandIDs {
   export const markdownPreview = 'markdownviewer:open';
+  export const markdownEditor = 'markdownviewer:edit';
 }
 
 /**
@@ -42,7 +46,12 @@ const plugin: JupyterFrontEndPlugin<IMarkdownViewerTracker> = {
   activate,
   id: '@jupyterlab/markdownviewer-extension:plugin',
   provides: IMarkdownViewerTracker,
-  requires: [ILayoutRestorer, IRenderMimeRegistry, ISettingRegistry],
+  requires: [
+    ILayoutRestorer,
+    IRenderMimeRegistry,
+    ISettingRegistry,
+    ITranslator
+  ],
   autoStart: true
 };
 
@@ -53,8 +62,10 @@ function activate(
   app: JupyterFrontEnd,
   restorer: ILayoutRestorer,
   rendermime: IRenderMimeRegistry,
-  settingRegistry: ISettingRegistry
+  settingRegistry: ISettingRegistry,
+  translator: ITranslator
 ): IMarkdownViewerTracker {
+  const trans = translator.load('jupyterlab');
   const { commands, docRegistry } = app;
 
   // Add the markdown renderer factory.
@@ -128,9 +139,9 @@ function activate(
   });
 
   commands.addCommand(CommandIDs.markdownPreview, {
-    label: 'Markdown Preview',
+    label: trans.__('Markdown Preview'),
     execute: args => {
-      let path = args['path'];
+      const path = args['path'];
       if (typeof path !== 'string') {
         return;
       }
@@ -140,6 +151,35 @@ function activate(
         options: args['options']
       });
     }
+  });
+
+  commands.addCommand(CommandIDs.markdownEditor, {
+    execute: () => {
+      const widget = tracker.currentWidget;
+      if (!widget) {
+        return;
+      }
+      const path = widget.context.path;
+      return commands.execute('docmanager:open', {
+        path,
+        factory: 'Editor',
+        options: {
+          mode: 'split-right'
+        }
+      });
+    },
+    isVisible: () => {
+      const widget = tracker.currentWidget;
+      return (
+        (widget && PathExt.extname(widget.context.path) === '.md') || false
+      );
+    },
+    label: trans.__('Show Markdown Editor')
+  });
+
+  app.contextMenu.addItem({
+    command: CommandIDs.markdownEditor,
+    selector: '.jp-RenderedMarkdown'
   });
 
   return tracker;

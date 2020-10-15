@@ -1,14 +1,15 @@
 // Copyright (c) Jupyter Development Team.
 // Distributed under the terms of the Modified BSD License.
-var data = require('./package.json');
-var Build = require('@jupyterlab/buildutils').Build;
+const data = require('./package.json');
+const webpack = require('webpack');
+const Build = require('@jupyterlab/builder').Build;
 
-var names = Object.keys(data.dependencies).filter(function(name) {
-  var packageData = require(name + '/package.json');
+const names = Object.keys(data.dependencies).filter(function (name) {
+  const packageData = require(name + '/package.json');
   return packageData.jupyterlab !== undefined;
 });
 
-var extras = Build.ensureAssets({
+const extras = Build.ensureAssets({
   packageNames: names,
   output: './build'
 });
@@ -20,9 +21,9 @@ module.exports = [
       path: __dirname + '/build',
       filename: 'bundle.js'
     },
-    node: {
-      fs: 'empty'
-    },
+    // node: {
+    //   fs: 'empty'
+    // },
     bail: true,
     devtool: 'source-map',
     mode: 'development',
@@ -49,7 +50,7 @@ module.exports = [
         {
           // In .css files, svg is loaded as a data URI.
           test: /\.svg(\?v=\d+\.\d+\.\d+)?$/,
-          issuer: { test: /\.css$/ },
+          issuer: /\.css$/,
           use: {
             loader: 'svg-url-loader',
             options: { encoding: 'none', limit: 10000 }
@@ -59,12 +60,18 @@ module.exports = [
           // In .ts and .tsx files (both of which compile to .js), svg files
           // must be loaded as a raw string instead of data URIs.
           test: /\.svg(\?v=\d+\.\d+\.\d+)?$/,
-          issuer: { test: /\.js$/ },
+          issuer: /\.js$/,
           use: {
             loader: 'raw-loader'
           }
         }
       ]
-    }
+    },
+    plugins: [
+      new webpack.DefinePlugin({
+        'process.env': '{}',
+        process: {}
+      })
+    ]
   }
 ].concat(extras);

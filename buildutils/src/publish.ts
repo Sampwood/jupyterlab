@@ -1,4 +1,4 @@
-/*-----------------------------------------------------------------------------
+/* -----------------------------------------------------------------------------
 | Copyright (c) Jupyter Development Team.
 | Distributed under the terms of the Modified BSD License.
 |----------------------------------------------------------------------------*/
@@ -40,7 +40,7 @@ commander
     if (curr.indexOf('rc') === -1 && curr.indexOf('a') === -1) {
       utils.run('lerna publish from-package -m "Publish"');
     } else {
-      utils.run('lerna publish from-package --npm-tag=next -m "Publish"');
+      utils.run('lerna publish from-package --dist-tag=next -m "Publish"');
     }
 
     // Fix up any tagging issues.
@@ -58,9 +58,8 @@ commander
     utils.run('node buildutils/lib/update-core-mode.js');
 
     // Make the Python release.
-    utils.run('python setup.py sdist');
-    utils.run('python setup.py bdist_wheel');
-    utils.run('python -m pip install -U twine');
+    utils.run('python -m pip install -U twine build');
+    utils.run('python -m build .');
     utils.run('twine check dist/*');
 
     const files = fs.readdirSync(distDir);
@@ -82,12 +81,15 @@ commander
     utils.run(`git tag v${curr}`);
 
     // Prompt the user to finalize.
-    console.log('*'.repeat(40));
-    console.log('*'.repeat(40));
-    console.log('Ready to publish!');
-    console.log('Run these command when ready:');
-    console.log('twine upload dist/*');
-    console.log('git push origin <BRANCH> --tags');
+    console.debug('*'.repeat(40));
+    console.debug('*'.repeat(40));
+    console.debug('Ready to publish!');
+    console.debug('Run these command when ready:');
+    console.debug('twine upload dist/*');
+    console.debug('git push origin <BRANCH> --tags');
+
+    // Emit a system beep.
+    process.stdout.write('\x07');
   });
 
 commander.parse(process.argv);

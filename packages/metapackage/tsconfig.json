@@ -61,6 +61,12 @@
       "path": "../csvviewer-extension"
     },
     {
+      "path": "../debugger"
+    },
+    {
+      "path": "../debugger-extension"
+    },
+    {
       "path": "../docmanager"
     },
     {
@@ -214,9 +220,6 @@
       "path": "../statusbar-extension"
     },
     {
-      "path": "../tabmanager-extension"
-    },
-    {
       "path": "../terminal"
     },
     {
@@ -229,10 +232,22 @@
       "path": "../theme-light-extension"
     },
     {
+      "path": "../toc"
+    },
+    {
+      "path": "../toc-extension"
+    },
+    {
       "path": "../tooltip"
     },
     {
       "path": "../tooltip-extension"
+    },
+    {
+      "path": "../translation"
+    },
+    {
+      "path": "../translation-extension"
     },
     {
       "path": "../ui-components"

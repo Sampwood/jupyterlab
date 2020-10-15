@@ -2,7 +2,8 @@ include package.json
 include LICENSE
 include CONTRIBUTING.md
 include README.md
-include setupbase.py
+include pyproject.toml
+include setup.py
 
 # Documentation
 graft docs

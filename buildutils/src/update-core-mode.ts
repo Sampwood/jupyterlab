@@ -1,4 +1,4 @@
-/*-----------------------------------------------------------------------------
+/* -----------------------------------------------------------------------------
 | Copyright (c) Jupyter Development Team.
 | Distributed under the terms of the Modified BSD License.
 |----------------------------------------------------------------------------*/
@@ -11,7 +11,7 @@ import * as utils from './utils';
 utils.run('jlpm integrity');
 
 // Get the dev mode package.json file.
-let data = utils.readJSONFile('./dev_mode/package.json');
+const data = utils.readJSONFile('./dev_mode/package.json');
 
 // Update the values that need to change and write to staging.
 data['jupyterlab']['buildDir'] = './build';
@@ -19,7 +19,7 @@ data['jupyterlab']['outputDir'] = '..';
 data['jupyterlab']['staticDir'] = '../static';
 data['jupyterlab']['linkedPackages'] = {};
 
-let staging = './jupyterlab/staging';
+const staging = './jupyterlab/staging';
 
 // Ensure a clean staging directory.
 const keep = ['yarn.js', '.yarnrc'];
@@ -39,6 +39,7 @@ const notice =
 
 [
   'index.js',
+  'publicpath.js',
   'webpack.config.js',
   'webpack.prod.config.js',
   'webpack.prod.minimize.config.js',
@@ -58,7 +59,7 @@ const notice =
 // Create a new yarn.lock file to ensure it is correct.
 utils.run('jlpm', { cwd: staging });
 try {
-  utils.run('jlpm yarn-deduplicate -s fewer', { cwd: staging });
+  utils.run('jlpm yarn-deduplicate -s fewer --fail', { cwd: staging });
 } catch {
   // re-run install if we deduped packages!
   utils.run('jlpm', { cwd: staging });

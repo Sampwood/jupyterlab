@@ -13,10 +13,16 @@
       "path": "../coreutils"
     },
     {
+      "path": "../docregistry"
+    },
+    {
       "path": "../running"
     },
     {
       "path": "../services"
+    },
+    {
+      "path": "../translation"
     },
     {
       "path": "../ui-components"

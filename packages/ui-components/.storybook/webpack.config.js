@@ -7,10 +7,7 @@ module.exports = ({ config }) => {
   // https://github.com/storybookjs/storybook/issues/6758
   config.module.rules = config.module.rules.map(rule => {
     if (rule.test.toString().includes('svg')) {
-      const test = rule.test
-        .toString()
-        .replace('svg|', '')
-        .replace(/\//g, '');
+      const test = rule.test.toString().replace('svg|', '').replace(/\//g, '');
       return { ...rule, test: new RegExp(test) };
     } else {
       return rule;
@@ -38,7 +35,7 @@ module.exports = ({ config }) => {
   config.module.rules.push({
     // in css files, svg is loaded as a url formatted string
     test: /\.svg(\?v=\d+\.\d+\.\d+)?$/,
-    issuer: { test: /\.css$/ },
+    issuer: /\.css$/,
     use: {
       loader: 'svg-url-loader',
       options: { encoding: 'none', limit: 10000 }

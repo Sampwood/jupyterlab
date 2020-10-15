@@ -22,6 +22,11 @@ import { INotebookModel } from './model';
 
 import { Notebook, StaticNotebook } from './widget';
 import { PageConfig } from '@jupyterlab/coreutils';
+import {
+  nullTranslator,
+  ITranslator,
+  TranslationBundle
+} from '@jupyterlab/translation';
 
 /**
  * The class name added to notebook panels.
@@ -45,6 +50,8 @@ export class NotebookPanel extends DocumentWidget<Notebook, INotebookModel> {
    */
   constructor(options: DocumentWidget.IOptions<Notebook, INotebookModel>) {
     super(options);
+    this.translator = options.translator || nullTranslator;
+    this._trans = this.translator.load('jupyterlab');
 
     // Set up CSS classes
     this.addClass(NOTEBOOK_PANEL_CLASS);
@@ -70,7 +77,7 @@ export class NotebookPanel extends DocumentWidget<Notebook, INotebookModel> {
 
       // Set the document edit mode on initial open if it looks like a new document.
       if (this.content.widgets.length === 1) {
-        let cellModel = this.content.widgets[0].model;
+        const cellModel = this.content.widgets[0].model;
         if (cellModel.type === 'code' && cellModel.value.text === '') {
           this.content.mode = 'edit';
         }
@@ -84,7 +91,7 @@ export class NotebookPanel extends DocumentWidget<Notebook, INotebookModel> {
       const { cells } = this.model;
       each(cells, cell => {
         if (isMarkdownCellModel(cell)) {
-          for (let key of cell.attachments.keys) {
+          for (const key of cell.attachments.keys) {
             if (!cell.value.text.includes(key)) {
               cell.attachments.remove(key);
             }
@@ -100,11 +107,6 @@ export class NotebookPanel extends DocumentWidget<Notebook, INotebookModel> {
   get sessionContext(): ISessionContext {
     return this.context.sessionContext;
   }
-
-  /**
-   * The notebook used by the widget.
-   */
-  readonly content: Notebook;
 
   /**
    * The model for the widget.
@@ -176,7 +178,7 @@ export class NotebookPanel extends DocumentWidget<Notebook, INotebookModel> {
     if (!this.model || !args.newValue) {
       return;
     }
-    let { newValue } = args;
+    const { newValue } = args;
     void newValue.info.then(info => {
       if (
         this.model &&
@@ -198,9 +200,12 @@ export class NotebookPanel extends DocumentWidget<Notebook, INotebookModel> {
       // The kernel died and the server is restarting it. We notify the user so
       // they know why their kernel state is gone.
       void showDialog({
-        title: 'Kernel Restarting',
-        body: `The kernel for ${this.sessionContext.session?.path} appears to have died. It will restart automatically.`,
-        buttons: [Dialog.okButton()]
+        title: this._trans.__('Kernel Restarting'),
+        body: this._trans.__(
+          'The kernel for %1 appears to have died. It will restart automatically.',
+          this.sessionContext.session?.path
+        ),
+        buttons: [Dialog.okButton({ label: this._trans.__('Ok') })]
       });
       this._autorestarting = true;
     } else if (status === 'restarting') {
@@ -235,6 +240,8 @@ export class NotebookPanel extends DocumentWidget<Notebook, INotebookModel> {
     });
   }
 
+  translator: ITranslator;
+  private _trans: TranslationBundle;
   /**
    * Whether we are currently in a series of autorestarts we have already
    * notified the user about.
@@ -277,7 +284,8 @@ export namespace NotebookPanel {
   /**
    * The default implementation of an `IContentFactory`.
    */
-  export class ContentFactory extends Notebook.ContentFactory
+  export class ContentFactory
+    extends Notebook.ContentFactory
     implements IContentFactory {
     /**
      * Create a new content area for the panel.

@@ -1,9 +1,9 @@
 // Copyright (c) Jupyter Development Team.
 // Distributed under the terms of the Modified BSD License.
 
-import { DocumentRegistry } from '@jupyterlab/docregistry';
+import { DocumentRegistry, DocumentWidget } from '@jupyterlab/docregistry';
 
-import { DockPanelSvg, LabIcon } from '@jupyterlab/ui-components';
+import { classes, DockPanelSvg, LabIcon } from '@jupyterlab/ui-components';
 
 import { ArrayExt, find, IIterator, iter, toArray } from '@lumino/algorithm';
 
@@ -54,18 +54,16 @@ const ACTIVE_CLASS = 'jp-mod-active';
 /**
  * The default rank of items added to a sidebar.
  */
-const DEFAULT_RANK = 500;
+const DEFAULT_RANK = 900;
 
 const ACTIVITY_CLASS = 'jp-Activity';
 
-/* tslint:disable */
 /**
  * The JupyterLab application shell token.
  */
 export const ILabShell = new Token<ILabShell>(
   '@jupyterlab/application:ILabShell'
 );
-/* tslint:enable */
 
 /**
  * The JupyterLab application shell interface.
@@ -79,7 +77,14 @@ export namespace ILabShell {
   /**
    * The areas of the application shell where widgets can reside.
    */
-  export type Area = 'main' | 'header' | 'top' | 'left' | 'right' | 'bottom';
+  export type Area =
+    | 'main'
+    | 'header'
+    | 'top'
+    | 'title'
+    | 'left'
+    | 'right'
+    | 'bottom';
 
   /**
    * The restorable description of an area within the main dock panel.
@@ -90,6 +95,21 @@ export namespace ILabShell {
    * An arguments object for the changed signals.
    */
   export type IChangedArgs = FocusTracker.IChangedArgs<Widget>;
+
+  /**
+   * The args for the current path change signal.
+   */
+  export interface ICurrentPathChangedArgs {
+    /**
+     * The new value of the tree path, not including '/tree'.
+     */
+    oldValue: string;
+
+    /**
+     * The old value of the tree path, not including '/tree'.
+     */
+    newValue: string;
+  }
 
   /**
    * A description of the application's user interface layout.
@@ -135,11 +155,6 @@ export namespace ILabShell {
      * The contents of the main application dock panel.
      */
     readonly dock: DockLayout.ILayoutConfig | null;
-
-    /**
-     * The document mode (i.e., multiple/single) of the main dock panel.
-     */
-    readonly mode: DockPanel.Mode | null;
   }
 
   /**
@@ -175,19 +190,21 @@ export class LabShell extends Widget implements JupyterFrontEnd.IShell {
     this.addClass(APPLICATION_SHELL_CLASS);
     this.id = 'main';
 
-    let headerPanel = (this._headerPanel = new Panel());
-    let topHandler = (this._topHandler = new Private.PanelHandler());
-    let bottomPanel = (this._bottomPanel = new BoxPanel());
-    let hboxPanel = new BoxPanel();
-    let dockPanel = (this._dockPanel = new DockPanelSvg());
+    const headerPanel = (this._headerPanel = new BoxPanel());
+    const titleHandler = (this._titleHandler = new Private.PanelHandler());
+    const topHandler = (this._topHandler = new Private.PanelHandler());
+    const bottomPanel = (this._bottomPanel = new BoxPanel());
+    const hboxPanel = new BoxPanel();
+    const dockPanel = (this._dockPanel = new DockPanelSvg());
     MessageLoop.installMessageHook(dockPanel, this._dockChildHook);
 
-    let hsplitPanel = new SplitPanel();
-    let leftHandler = (this._leftHandler = new Private.SideBarHandler());
-    let rightHandler = (this._rightHandler = new Private.SideBarHandler());
-    let rootLayout = new BoxLayout();
+    const hsplitPanel = new SplitPanel();
+    const leftHandler = (this._leftHandler = new Private.SideBarHandler());
+    const rightHandler = (this._rightHandler = new Private.SideBarHandler());
+    const rootLayout = new BoxLayout();
 
     headerPanel.id = 'jp-header-panel';
+    titleHandler.panel.id = 'jp-title-panel';
     topHandler.panel.id = 'jp-top-panel';
     bottomPanel.id = 'jp-bottom-panel';
     hboxPanel.id = 'jp-main-content-panel';
@@ -206,6 +223,7 @@ export class LabShell extends Widget implements JupyterFrontEnd.IShell {
     dockPanel.spacing = 5;
     hsplitPanel.spacing = 1;
 
+    headerPanel.direction = 'top-to-bottom';
     hboxPanel.direction = 'left-to-right';
     hsplitPanel.orientation = 'horizontal';
     bottomPanel.direction = 'bottom-to-top';
@@ -234,16 +252,19 @@ export class LabShell extends Widget implements JupyterFrontEnd.IShell {
     hsplitPanel.setRelativeSizes([1, 2.5, 1]);
 
     BoxLayout.setStretch(headerPanel, 0);
+    BoxLayout.setStretch(titleHandler.panel, 0);
     BoxLayout.setStretch(topHandler.panel, 0);
     BoxLayout.setStretch(hboxPanel, 1);
     BoxLayout.setStretch(bottomPanel, 0);
 
     rootLayout.addWidget(headerPanel);
+    rootLayout.addWidget(titleHandler.panel);
     rootLayout.addWidget(topHandler.panel);
     rootLayout.addWidget(hboxPanel);
     rootLayout.addWidget(bottomPanel);
 
-    // initially hiding header and bottom panel when no elements inside
+    // initially hiding header and bottom panel when no elements inside,
+    // and the title panel as we only show that in single document mode.
     this._headerPanel.hide();
     this._bottomPanel.hide();
 
@@ -265,6 +286,84 @@ export class LabShell extends Widget implements JupyterFrontEnd.IShell {
       this._onLayoutModified,
       this
     );
+
+    // Setup single-document-mode title bar
+    const titleWidget = (this._titleWidget = new Widget());
+    titleWidget.id = 'jp-title-panel-title';
+    titleWidget.node.appendChild(document.createElement('h1'));
+    this.add(titleWidget, 'title');
+
+    if (this._dockPanel.mode === 'multiple-document') {
+      this._titleHandler.panel.hide();
+    }
+
+    // Set up single-document mode switch in menu bar
+    const spacer = new Widget();
+    spacer.id = 'jp-top-spacer';
+    this.add(spacer, 'top', { rank: 1000 });
+
+    // switch accessibility refs:
+    // https://developer.mozilla.org/en-US/docs/Web/Accessibility/ARIA/Roles/Switch_role
+    // https://developer.mozilla.org/en-US/docs/Web/HTML/Element/button#Accessibility_concerns
+    const sdmSwitch = document.createElement('button');
+    sdmSwitch.className = 'jp-slider jp-slider-sdm';
+    sdmSwitch.setAttribute('role', 'switch');
+    sdmSwitch.value = 'single-document';
+    sdmSwitch.title = 'Single-Document Mode';
+    this.modeChanged.connect((_, mode) => {
+      sdmSwitch.setAttribute(
+        'aria-checked',
+        mode === 'single-document' ? 'true' : 'false'
+      );
+    });
+    sdmSwitch.setAttribute(
+      'aria-checked',
+      this.mode === 'single-document' ? 'true' : 'false'
+    );
+    sdmSwitch.addEventListener('click', () => {
+      this.mode =
+        sdmSwitch.getAttribute('aria-checked') === 'true'
+          ? 'multiple-document'
+          : 'single-document';
+    });
+
+    const sdmLabel = document.createElement('label');
+    sdmLabel.className = 'jp-slider-label';
+    sdmLabel.textContent = 'Single-Document Mode';
+    sdmLabel.title = 'Single-Document Mode';
+    const sdmTrack = document.createElement('div');
+    sdmTrack.className = 'jp-slider-track';
+    sdmTrack.setAttribute('aria-hidden', 'true');
+    sdmSwitch.appendChild(sdmLabel);
+    sdmSwitch.appendChild(sdmTrack);
+
+    const sdmSwitchWidget = new Widget();
+    sdmSwitchWidget.node.appendChild(sdmSwitch);
+    sdmSwitchWidget.id = 'jp-single-document-mode';
+    this.add(sdmSwitchWidget, 'top', { rank: 1010 });
+
+    // Wire up signals to update the title panel of the single document mode to
+    // follow the title of this.currentWidget
+    this.currentChanged.connect((sender, args) => {
+      let newValue = args.newValue;
+      let oldValue = args.oldValue;
+
+      // Stop watching the title of the previously current widget
+      if (oldValue) {
+        oldValue.title.changed.disconnect(this._updateTitlePanelTitle, this);
+      }
+
+      // Start watching the title of the new current widget
+      if (newValue) {
+        newValue.title.changed.connect(this._updateTitlePanelTitle, this);
+        this._updateTitlePanelTitle();
+      }
+
+      if (newValue && newValue instanceof DocumentWidget) {
+        newValue.context.pathChanged.connect(this._updateCurrentPath, this);
+      }
+      this._updateCurrentPath();
+    });
   }
 
   /**
@@ -286,6 +385,22 @@ export class LabShell extends Widget implements JupyterFrontEnd.IShell {
    */
   get currentChanged(): ISignal<this, ILabShell.IChangedArgs> {
     return this._currentChanged;
+  }
+
+  /**
+   * A signal emitted when the shell/dock panel change modes (single/mutiple document).
+   */
+  get modeChanged(): ISignal<this, DockPanel.Mode> {
+    return this._modeChanged;
+  }
+
+  /**
+   * A signal emitted when the path of the current document changes.
+   *
+   * This also fires when the current document itself changes.
+   */
+  get currentPathChanged(): ISignal<this, ILabShell.ICurrentPathChangedArgs> {
+    return this._currentPathChanged;
   }
 
   /**
@@ -358,6 +473,11 @@ export class LabShell extends Widget implements JupyterFrontEnd.IShell {
 
       // Set the mode data attribute on the application shell node.
       this.node.dataset.shellMode = mode;
+      // Show the title panel
+      this._titleHandler.panel.show();
+      this._updateTitlePanelTitle();
+
+      this._modeChanged.emit(mode);
       return;
     }
 
@@ -378,7 +498,7 @@ export class LabShell extends Widget implements JupyterFrontEnd.IShell {
     // Add any widgets created during single document mode, which have
     // subsequently been removed from the dock panel after the multiple document
     // layout has been restored. If the widget has add options cached for
-    // it (i.e., if it has been placed with respect to another widget),
+    // the widget (i.e., if it has been placed with respect to another widget),
     // then take that into account.
     widgets.forEach(widget => {
       if (!widget.parent) {
@@ -398,6 +518,10 @@ export class LabShell extends Widget implements JupyterFrontEnd.IShell {
 
     // Set the mode data attribute on the applications shell node.
     this.node.dataset.shellMode = mode;
+    // Hide the title panel
+    this._titleHandler.panel.hide();
+    // Emit the mode changed signal
+    this._modeChanged.emit(mode);
   }
 
   /**
@@ -434,12 +558,12 @@ export class LabShell extends Widget implements JupyterFrontEnd.IShell {
    * Activate the next Tab in the active TabBar.
    */
   activateNextTab(): void {
-    let current = this._currentTabBar();
+    const current = this._currentTabBar();
     if (!current) {
       return;
     }
 
-    let ci = current.currentIndex;
+    const ci = current.currentIndex;
     if (ci === -1) {
       return;
     }
@@ -453,7 +577,7 @@ export class LabShell extends Widget implements JupyterFrontEnd.IShell {
     }
 
     if (ci === current.titles.length - 1) {
-      let nextBar = this._adjacentBar('next');
+      const nextBar = this._adjacentBar('next');
       if (nextBar) {
         nextBar.currentIndex = 0;
         if (nextBar.currentTitle) {
@@ -467,12 +591,12 @@ export class LabShell extends Widget implements JupyterFrontEnd.IShell {
    * Activate the previous Tab in the active TabBar.
    */
   activatePreviousTab(): void {
-    let current = this._currentTabBar();
+    const current = this._currentTabBar();
     if (!current) {
       return;
     }
 
-    let ci = current.currentIndex;
+    const ci = current.currentIndex;
     if (ci === -1) {
       return;
     }
@@ -486,9 +610,9 @@ export class LabShell extends Widget implements JupyterFrontEnd.IShell {
     }
 
     if (ci === 0) {
-      let prevBar = this._adjacentBar('previous');
+      const prevBar = this._adjacentBar('previous');
       if (prevBar) {
-        let len = prevBar.titles.length;
+        const len = prevBar.titles.length;
         prevBar.currentIndex = len - 1;
         if (prevBar.currentTitle) {
           prevBar.currentTitle.owner.activate();
@@ -501,7 +625,7 @@ export class LabShell extends Widget implements JupyterFrontEnd.IShell {
    * Activate the next TabBar.
    */
   activateNextTabBar(): void {
-    let nextBar = this._adjacentBar('next');
+    const nextBar = this._adjacentBar('next');
     if (nextBar) {
       if (nextBar.currentTitle) {
         nextBar.currentTitle.owner.activate();
@@ -513,7 +637,7 @@ export class LabShell extends Widget implements JupyterFrontEnd.IShell {
    * Activate the next TabBar.
    */
   activatePreviousTabBar(): void {
-    let nextBar = this._adjacentBar('previous');
+    const nextBar = this._adjacentBar('previous');
     if (nextBar) {
       if (nextBar.currentTitle) {
         nextBar.currentTitle.owner.activate();
@@ -537,6 +661,8 @@ export class LabShell extends Widget implements JupyterFrontEnd.IShell {
         return this._addToHeaderArea(widget, options);
       case 'top':
         return this._addToTopArea(widget, options);
+      case 'title':
+        return this._addToTitleArea(widget, options);
       case 'bottom':
         return this._addToBottomArea(widget, options);
       default:
@@ -568,6 +694,7 @@ export class LabShell extends Widget implements JupyterFrontEnd.IShell {
       return;
     }
     this._layoutDebouncer.dispose();
+    this._titleWidget.dispose();
     super.dispose();
   }
 
@@ -630,12 +757,11 @@ export class LabShell extends Widget implements JupyterFrontEnd.IShell {
   /**
    * Restore the layout state for the application shell.
    */
-  restoreLayout(layout: ILabShell.ILayout): void {
+  restoreLayout(mode: DockPanel.Mode, layout: ILabShell.ILayout): void {
     const { mainArea, leftArea, rightArea } = layout;
-
     // Rehydrate the main area.
     if (mainArea) {
-      const { currentWidget, dock, mode } = mainArea;
+      const { currentWidget, dock } = mainArea;
 
       if (dock) {
         this._dockPanel.restoreLayout(dock);
@@ -646,16 +772,29 @@ export class LabShell extends Widget implements JupyterFrontEnd.IShell {
       if (currentWidget) {
         this.activateById(currentWidget.id);
       }
+    } else {
+      // This is needed when loading in an empty workspace in single doc mode
+      if (mode) {
+        this.mode = mode;
+      }
     }
 
     // Rehydrate the left area.
     if (leftArea) {
       this._leftHandler.rehydrate(leftArea);
+    } else {
+      if (mode === 'single-document') {
+        this.collapseLeft();
+      }
     }
 
     // Rehydrate the right area.
     if (rightArea) {
       this._rightHandler.rehydrate(rightArea);
+    } else {
+      if (mode === 'single-document') {
+        this.collapseRight();
+      }
     }
 
     if (!this._isRestored) {
@@ -673,18 +812,18 @@ export class LabShell extends Widget implements JupyterFrontEnd.IShell {
   saveLayout(): ILabShell.ILayout {
     // If the application is in single document mode, use the cached layout if
     // available. Otherwise, default to querying the dock panel for layout.
-    return {
+    const layout = {
       mainArea: {
         currentWidget: this._tracker.currentWidget,
         dock:
           this.mode === 'single-document'
             ? this._cachedLayout || this._dockPanel.saveLayout()
-            : this._dockPanel.saveLayout(),
-        mode: this._dockPanel.mode
+            : this._dockPanel.saveLayout()
       },
       leftArea: this._leftHandler.dehydrate(),
       rightArea: this._rightHandler.dehydrate()
     };
+    return layout;
   }
 
   /**
@@ -717,6 +856,32 @@ export class LabShell extends Widget implements JupyterFrontEnd.IShell {
   }
 
   /**
+   * Update the title panel title based on the title of the current widget.
+   */
+  private _updateTitlePanelTitle() {
+    let current = this.currentWidget;
+    const h1 = this._titleWidget.node.children[0] as HTMLHeadElement;
+    h1.textContent = current ? current.title.label : '';
+    h1.title = current ? current.title.caption : '';
+  }
+
+  /**
+   * The path of the current widget changed, fire the _currentPathChanged signal.
+   */
+  private _updateCurrentPath() {
+    let current = this.currentWidget;
+    let newValue = '';
+    if (current && current instanceof DocumentWidget) {
+      newValue = current.context.path;
+    }
+    this._currentPathChanged.emit({
+      newValue: newValue,
+      oldValue: this._currentPath
+    });
+    this._currentPath = newValue;
+  }
+
+  /**
    * Add a widget to the left content area.
    *
    * #### Notes
@@ -732,7 +897,7 @@ export class LabShell extends Widget implements JupyterFrontEnd.IShell {
     }
     options = options || this._sideOptionsCache.get(widget) || {};
     this._sideOptionsCache.set(widget, options);
-    let rank = 'rank' in options ? options.rank : DEFAULT_RANK;
+    const rank = 'rank' in options ? options.rank : DEFAULT_RANK;
     this._leftHandler.addWidget(widget, rank!);
     this._onLayoutModified();
   }
@@ -772,11 +937,14 @@ export class LabShell extends Widget implements JupyterFrontEnd.IShell {
     // (for context menu support)
     title.dataset = { ...title.dataset, id: widget.id };
 
-    // bind an appropriate style to the icon
     if (title.icon instanceof LabIcon) {
+      // bind an appropriate style to the icon
       title.icon = title.icon.bindprops({
         stylesheet: 'mainAreaTab'
       });
+    } else if (typeof title.icon === 'string' || !title.icon) {
+      // add some classes to help with displaying css background imgs
+      title.iconClass = classes(title.iconClass, 'jp-Icon');
     }
 
     dock.addWidget(widget, { mode, ref });
@@ -837,6 +1005,29 @@ export class LabShell extends Widget implements JupyterFrontEnd.IShell {
     this._onLayoutModified();
     if (this._topHandler.panel.isHidden) {
       this._topHandler.panel.show();
+    }
+  }
+
+  /**
+   * Add a widget to the title content area.
+   *
+   * #### Notes
+   * Widgets must have a unique `id` property, which will be used as the DOM id.
+   */
+  private _addToTitleArea(
+    widget: Widget,
+    options?: DocumentRegistry.IOpenOptions
+  ): void {
+    if (!widget.id) {
+      console.error('Widgets added to app shell must have unique id property.');
+      return;
+    }
+    options = options || {};
+    const rank = options.rank ?? DEFAULT_RANK;
+    this._titleHandler.addWidget(widget, rank);
+    this._onLayoutModified();
+    if (this._titleHandler.panel.isHidden) {
+      this._titleHandler.panel.show();
     }
   }
 
@@ -995,6 +1186,12 @@ export class LabShell extends Widget implements JupyterFrontEnd.IShell {
   private _activeChanged = new Signal<this, ILabShell.IChangedArgs>(this);
   private _cachedLayout: DockLayout.ILayoutConfig | null = null;
   private _currentChanged = new Signal<this, ILabShell.IChangedArgs>(this);
+  private _currentPath = '';
+  private _currentPathChanged = new Signal<
+    this,
+    ILabShell.ICurrentPathChangedArgs
+  >(this);
+  private _modeChanged = new Signal<this, DockPanel.Mode>(this);
   private _dockPanel: DockPanel;
   private _isRestored = false;
   private _layoutModified = new Signal<this, void>(this);
@@ -1007,6 +1204,8 @@ export class LabShell extends Widget implements JupyterFrontEnd.IShell {
   private _tracker = new FocusTracker<Widget>();
   private _headerPanel: Panel;
   private _topHandler: Private.PanelHandler;
+  private _titleHandler: Private.PanelHandler;
+  private _titleWidget: Widget;
   private _bottomPanel: Panel;
   private _mainOptionsCache = new Map<Widget, DocumentRegistry.IOpenOptions>();
   private _sideOptionsCache = new Map<Widget, DocumentRegistry.IOpenOptions>();
@@ -1144,7 +1343,7 @@ namespace Private {
      * @param id - The widget's unique ID.
      */
     activate(id: string): void {
-      let widget = this._findWidgetByID(id);
+      const widget = this._findWidgetByID(id);
       if (widget) {
         this._sideBar.currentTitle = widget.title;
         widget.activate();
@@ -1173,8 +1372,8 @@ namespace Private {
     addWidget(widget: Widget, rank: number): void {
       widget.parent = null;
       widget.hide();
-      let item = { widget, rank };
-      let index = this._findInsertIndex(item);
+      const item = { widget, rank };
+      const index = this._findInsertIndex(item);
       ArrayExt.insert(this._items, index, item);
       this._stackedPanel.insertWidget(index, widget);
       const title = this._sideBar.insertTab(index, widget.title);
@@ -1182,11 +1381,14 @@ namespace Private {
       // in order to dispatch click events to the right widget.
       title.dataset = { id: widget.id };
 
-      // bind an appropriate style to the icon
       if (title.icon instanceof LabIcon) {
+        // bind an appropriate style to the icon
         title.icon = title.icon.bindprops({
           stylesheet: 'sideBar'
         });
+      } else if (typeof title.icon === 'string' || !title.icon) {
+        // add some classes to help with displaying css background imgs
+        title.iconClass = classes(title.iconClass, 'jp-Icon', 'jp-Icon-20');
       }
 
       this._refreshVisibility();
@@ -1196,9 +1398,9 @@ namespace Private {
      * Dehydrate the side bar data.
      */
     dehydrate(): ILabShell.ISideArea {
-      let collapsed = this._sideBar.currentTitle === null;
-      let widgets = toArray(this._stackedPanel.widgets);
-      let currentWidget = widgets[this._sideBar.currentIndex];
+      const collapsed = this._sideBar.currentTitle === null;
+      const widgets = toArray(this._stackedPanel.widgets);
+      const currentWidget = widgets[this._sideBar.currentIndex];
       return { collapsed, currentWidget, widgets };
     }
 
@@ -1208,7 +1410,8 @@ namespace Private {
     rehydrate(data: ILabShell.ISideArea): void {
       if (data.currentWidget) {
         this.activate(data.currentWidget.id);
-      } else if (data.collapsed) {
+      }
+      if (data.collapsed) {
         this.collapse();
       }
     }
@@ -1231,7 +1434,7 @@ namespace Private {
      * Find the widget which owns the given title, or `null`.
      */
     private _findWidgetByTitle(title: Title<Widget>): Widget | null {
-      let item = find(this._items, value => value.widget.title === title);
+      const item = find(this._items, value => value.widget.title === title);
       return item ? item.widget : null;
     }
 
@@ -1239,7 +1442,7 @@ namespace Private {
      * Find the widget with the given id, or `null`.
      */
     private _findWidgetByID(id: string): Widget | null {
-      let item = find(this._items, value => value.widget.id === id);
+      const item = find(this._items, value => value.widget.id === id);
       return item ? item.widget : null;
     }
 

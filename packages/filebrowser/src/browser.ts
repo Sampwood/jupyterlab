@@ -1,7 +1,12 @@
 // Copyright (c) Jupyter Development Team.
 // Distributed under the terms of the Modified BSD License.
 
-import { showErrorMessage, Toolbar, ToolbarButton } from '@jupyterlab/apputils';
+import {
+  showErrorMessage,
+  Toolbar,
+  ToolbarButton,
+  ReactWidget
+} from '@jupyterlab/apputils';
 
 import { IDocumentManager } from '@jupyterlab/docmanager';
 
@@ -17,9 +22,16 @@ import { BreadCrumbs } from './crumbs';
 
 import { DirListing } from './listing';
 
-import { FileBrowserModel } from './model';
+import { FilterFileBrowserModel } from './model';
 
 import { Uploader } from './upload';
+
+import { FilenameSearcher } from './search';
+import {
+  nullTranslator,
+  TranslationBundle,
+  ITranslator
+} from '@jupyterlab/translation';
 
 /**
  * The class name added to file browsers.
@@ -30,6 +42,11 @@ const FILE_BROWSER_CLASS = 'jp-FileBrowser';
  * The class name added to the filebrowser crumbs node.
  */
 const CRUMBS_CLASS = 'jp-FileBrowser-crumbs';
+
+/**
+ * The class name added to the filebrowser filterbox node.
+ */
+const FILTERBOX_CLASS = 'jp-FileBrowser-filterBox';
 
 /**
  * The class name added to the filebrowser toolbar node.
@@ -61,10 +78,13 @@ export class FileBrowser extends Widget {
 
     const model = (this.model = options.model);
     const renderer = options.renderer;
+    const translator = this.translator;
 
     model.connectionFailure.connect(this._onConnectionFailure, this);
+    this.translator = options.translator || nullTranslator;
     this._manager = model.manager;
-    this._crumbs = new BreadCrumbs({ model });
+    this._trans = this.translator.load('jupyterlab');
+    this._crumbs = new BreadCrumbs({ model, translator });
     this.toolbar = new Toolbar<Widget>();
     this._directoryPending = false;
 
@@ -73,33 +93,44 @@ export class FileBrowser extends Widget {
       onClick: () => {
         this.createNewDirectory();
       },
-      tooltip: 'New Folder'
+      tooltip: this._trans.__('New Folder')
     });
-    const uploader = new Uploader({ model });
+    const uploader = new Uploader({ model, translator: this.translator });
+
     const refresher = new ToolbarButton({
       icon: refreshIcon,
       onClick: () => {
         void model.refresh();
       },
-      tooltip: 'Refresh File List'
+      tooltip: this._trans.__('Refresh File List')
     });
 
     this.toolbar.addItem('newFolder', newFolder);
     this.toolbar.addItem('upload', uploader);
     this.toolbar.addItem('refresher', refresher);
 
-    this._listing = new DirListing({ model, renderer });
+    this._listing = new DirListing({
+      model,
+      renderer,
+      translator: this.translator
+    });
+
+    this._filenameSearcher = FilenameSearcher({
+      listing: this._listing,
+      useFuzzyFilter: this._useFuzzyFilter,
+      placeholder: this._trans.__('Filter files by name')
+    });
 
     this._crumbs.addClass(CRUMBS_CLASS);
     this.toolbar.addClass(TOOLBAR_CLASS);
+    this._filenameSearcher.addClass(FILTERBOX_CLASS);
     this._listing.addClass(LISTING_CLASS);
 
-    const layout = new PanelLayout();
-
-    layout.addWidget(this.toolbar);
-    layout.addWidget(this._crumbs);
-    layout.addWidget(this._listing);
-    this.layout = layout;
+    this.layout = new PanelLayout();
+    this.layout.addWidget(this.toolbar);
+    this.layout.addWidget(this._filenameSearcher);
+    this.layout.addWidget(this._crumbs);
+    this.layout.addWidget(this._listing);
 
     if (options.restore !== false) {
       void model.restore(this.id);
@@ -109,7 +140,7 @@ export class FileBrowser extends Widget {
   /**
    * The model used by the file browser.
    */
-  readonly model: FileBrowserModel;
+  readonly model: FilterFileBrowserModel;
 
   /**
    * The toolbar used by the file browser.
@@ -259,13 +290,19 @@ export class FileBrowser extends Widget {
   /**
    * Handle a connection lost signal from the model.
    */
-  private _onConnectionFailure(sender: FileBrowserModel, args: Error): void {
+  private _onConnectionFailure(
+    sender: FilterFileBrowserModel,
+    args: Error
+  ): void {
     if (
       args instanceof ServerConnection.ResponseError &&
       args.response.status === 404
     ) {
-      const title = 'Directory not found';
-      args.message = `Directory not found: "${this.model.path}"`;
+      const title = this._trans.__('Directory not found');
+      args.message = this._trans.__(
+        'Directory not found: "%1"',
+        this.model.path
+      );
       void showErrorMessage(title, args);
     }
   }
@@ -281,11 +318,41 @@ export class FileBrowser extends Widget {
     this._navigateToCurrentDirectory = value;
   }
 
+  /**
+   * Whether to use fuzzy filtering on file names.
+   */
+  set useFuzzyFilter(value: boolean) {
+    this._useFuzzyFilter = value;
+
+    this._filenameSearcher = FilenameSearcher({
+      listing: this._listing,
+      useFuzzyFilter: this._useFuzzyFilter,
+      placeholder: this._trans.__('Filter files by name'),
+      forceRefresh: true
+    });
+    this._filenameSearcher.addClass(FILTERBOX_CLASS);
+
+    this.layout.removeWidget(this._filenameSearcher);
+    this.layout.removeWidget(this._crumbs);
+    this.layout.removeWidget(this._listing);
+
+    this.layout.addWidget(this._filenameSearcher);
+    this.layout.addWidget(this._crumbs);
+    this.layout.addWidget(this._listing);
+  }
+
+  // Override Widget.layout with a more specific PanelLayout type.
+  layout: PanelLayout;
+
+  protected translator: ITranslator;
+  private _trans: TranslationBundle;
   private _crumbs: BreadCrumbs;
   private _listing: DirListing;
+  private _filenameSearcher: ReactWidget;
   private _manager: IDocumentManager;
   private _directoryPending: boolean;
   private _navigateToCurrentDirectory: boolean;
+  private _useFuzzyFilter: boolean = true;
 }
 
 /**
@@ -304,7 +371,7 @@ export namespace FileBrowser {
     /**
      * A file browser model instance.
      */
-    model: FileBrowserModel;
+    model: FilterFileBrowserModel;
 
     /**
      * An optional renderer for the directory listing area.
@@ -322,5 +389,10 @@ export namespace FileBrowser {
      * browser to be able to save its state.
      */
     restore?: boolean;
+
+    /**
+     * The application language translator.
+     */
+    translator?: ITranslator;
   }
 }

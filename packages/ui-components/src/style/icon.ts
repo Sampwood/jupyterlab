@@ -141,7 +141,7 @@ export namespace LabIconStyle {
     stylesheet?: ISheetResolvable | ISheetResolvable[];
 
     /**
-     * @depreacted use stylesheet instead
+     * @deprecated use stylesheet instead
      */
     kind?: IBuiltin;
 
@@ -210,7 +210,8 @@ export namespace LabIconStyle {
 
     launcherCard: {
       container: {
-        height: '68px'
+        height: '52px',
+        width: '52px'
       },
       element: {
         height: '52px',
@@ -224,7 +225,9 @@ export namespace LabIconStyle {
     launcherSection: {
       container: {
         boxSizing: 'border-box',
-        marginRight: '12px'
+        marginRight: '12px',
+        height: '32px',
+        width: '32px'
       },
       element: {
         height: '32px',
@@ -311,7 +314,7 @@ export namespace LabIconStyle {
 
     runningItem: {
       container: {
-        margin: '0px 4px 0px 12px'
+        margin: '0px 4px 0px 4px'
       },
       element: {
         height: '16px',
@@ -385,6 +388,7 @@ export namespace LabIconStyle {
         }
       },
       element: {
+        height: 'auto',
         width: '20px'
       },
       options: {
@@ -400,6 +404,7 @@ export namespace LabIconStyle {
         zIndex: 1
       },
       element: {
+        // width no height
         width: '100px'
       },
       options: {
@@ -546,7 +551,7 @@ export namespace LabIconStyle {
   }
 
   // cache style classes for builtin stylesheets
-  let _styleClassCache = new Map<string, string>();
+  const _styleClassCache = new Map<string, string>();
 
   /**
    * Get a typestyle class, given a set of icon styling props

@@ -1,4 +1,4 @@
-/*-----------------------------------------------------------------------------
+/* -----------------------------------------------------------------------------
 | Copyright (c) Jupyter Development Team.
 | Distributed under the terms of the Modified BSD License.
 |----------------------------------------------------------------------------*/
@@ -25,14 +25,12 @@ import { DockPanel, Widget } from '@lumino/widgets';
 
 import { ILabShell } from './shell';
 
-/* tslint:disable */
 /**
  * The layout restorer token.
  */
 export const ILayoutRestorer = new Token<ILayoutRestorer>(
   '@jupyterlab/application:ILayoutRestorer'
 );
-/* tslint:enable */
 
 /**
  * A static class that restores the widgets of the application when it reloads.
@@ -271,12 +269,12 @@ export class LayoutRestorer implements ILayoutRestorer {
   save(data: ILabShell.ILayout): Promise<void> {
     // If there are promises that are unresolved, bail.
     if (!this._promisesDone) {
-      let warning = 'save() was called prematurely.';
+      const warning = 'save() was called prematurely.';
       console.warn(warning);
       return Promise.reject(warning);
     }
 
-    let dehydrated: Private.ILayout = {};
+    const dehydrated: Private.ILayout = {};
 
     // Dehydrate main area.
     dehydrated.main = this._dehydrateMainArea(data.mainArea);
@@ -327,9 +325,9 @@ export class LayoutRestorer implements ILayoutRestorer {
     if (!area) {
       return null;
     }
-    let dehydrated: Private.ISideArea = { collapsed: area.collapsed };
+    const dehydrated: Private.ISideArea = { collapsed: area.collapsed };
     if (area.currentWidget) {
-      let current = Private.nameProperty.get(area.currentWidget);
+      const current = Private.nameProperty.get(area.currentWidget);
       if (current) {
         dehydrated.current = current;
       }
@@ -355,7 +353,7 @@ export class LayoutRestorer implements ILayoutRestorer {
     if (!area) {
       return { collapsed: true, currentWidget: null, widgets: null };
     }
-    let internal = this._widgets;
+    const internal = this._widgets;
     const collapsed = area.hasOwnProperty('collapsed')
       ? !!area.collapsed
       : false;
@@ -381,7 +379,7 @@ export class LayoutRestorer implements ILayoutRestorer {
    * Handle a widget disposal.
    */
   private _onWidgetDisposed(widget: Widget): void {
-    let name = Private.nameProperty.get(widget);
+    const name = Private.nameProperty.get(widget);
     this._widgets.delete(name);
   }
 
@@ -580,13 +578,12 @@ namespace Private {
    * Return a dehydrated, serializable version of the main dock panel.
    */
   export function serializeMain(area: ILabShell.IMainArea): IMainArea {
-    let dehydrated: IMainArea = {
+    const dehydrated: IMainArea = {
       dock: (area && area.dock && serializeArea(area.dock.main)) || null
     };
     if (area) {
-      dehydrated.mode = area.mode;
       if (area.currentWidget) {
-        let current = Private.nameProperty.get(area.currentWidget);
+        const current = Private.nameProperty.get(area.currentWidget);
         if (current) {
           dehydrated.current = current;
         }
@@ -623,7 +620,7 @@ namespace Private {
 
     if (type === 'tab-area') {
       const { currentIndex, widgets } = area as ITabArea;
-      let hydrated: ILabShell.AreaConfig = {
+      const hydrated: ILabShell.AreaConfig = {
         type: 'tab-area',
         currentIndex: currentIndex || 0,
         widgets:
@@ -643,7 +640,7 @@ namespace Private {
     }
 
     const { orientation, sizes, children } = area as ISplitArea;
-    let hydrated: ILabShell.AreaConfig = {
+    const hydrated: ILabShell.AreaConfig = {
       type: 'split-area',
       orientation: orientation,
       sizes: sizes || [],
@@ -677,13 +674,10 @@ namespace Private {
 
     const name = (area as any).current || null;
     const dock = (area as any).dock || null;
-    const mode = (area as any).mode || null;
 
     return {
       currentWidget: (name && names.has(name) && names.get(name)) || null,
-      dock: dock ? { main: deserializeArea(dock, names) } : null,
-      mode:
-        mode === 'multiple-document' || mode === 'single-document' ? mode : null
+      dock: dock ? { main: deserializeArea(dock, names) } : null
     };
   }
 }

@@ -17,6 +17,12 @@ import {
   MimeModel
 } from '@jupyterlab/rendermime';
 
+import {
+  nullTranslator,
+  ITranslator,
+  TranslationBundle
+} from '@jupyterlab/translation';
+
 import { PromiseDelegate } from '@lumino/coreutils';
 
 import { Message } from '@lumino/messaging';
@@ -45,6 +51,8 @@ export class MarkdownViewer extends Widget {
   constructor(options: MarkdownViewer.IOptions) {
     super();
     this.context = options.context;
+    this.translator = options.translator || nullTranslator;
+    this._trans = this.translator.load('jupyterlab');
     this.renderer = options.renderer;
     this.node.tabIndex = -1;
     this.addClass(MARKDOWNVIEWER_CLASS);
@@ -95,22 +103,23 @@ export class MarkdownViewer extends Widget {
     const { style } = this.renderer.node;
     switch (option) {
       case 'fontFamily':
-        style.setProperty(option, value as string | null);
+        style.setProperty('font-family', value as string | null);
         break;
       case 'fontSize':
-        style.setProperty(option, value ? value + 'px' : null);
+        style.setProperty('font-size', value ? value + 'px' : null);
         break;
       case 'hideFrontMatter':
         this.update();
         break;
       case 'lineHeight':
-        style.setProperty(option, value ? value.toString() : null);
+        style.setProperty('line-height', value ? value.toString() : null);
         break;
-      case 'lineWidth':
+      case 'lineWidth': {
         const padding = value ? `calc(50% - ${(value as number) / 2}ch)` : null;
-        style.setProperty('paddingLeft', padding);
-        style.setProperty('paddingRight', padding);
+        style.setProperty('padding-left', padding);
+        style.setProperty('padding-right', padding);
         break;
+      }
       case 'renderTimeout':
         if (this._monitor) {
           this._monitor.timeout = value as number;
@@ -197,13 +206,17 @@ export class MarkdownViewer extends Widget {
       requestAnimationFrame(() => {
         this.dispose();
       });
-      void showErrorMessage(`Renderer Failure: ${context.path}`, reason);
+      void showErrorMessage(
+        this._trans.__('Renderer Failure: %1', context.path),
+        reason
+      );
     }
   }
 
   readonly context: DocumentRegistry.Context;
   readonly renderer: IRenderMime.IRenderer;
-
+  protected translator: ITranslator;
+  private _trans: TranslationBundle;
   private _config = { ...MarkdownViewer.defaultConfig };
   private _fragment = '';
   private _monitor: ActivityMonitor<DocumentRegistry.IModel, void> | null;
@@ -229,6 +242,11 @@ export namespace MarkdownViewer {
      * The renderer instance.
      */
     renderer: IRenderMime.IRenderer;
+
+    /**
+     * The application language translator.
+     */
+    translator?: ITranslator;
   }
 
   export interface IConfig {

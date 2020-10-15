@@ -9,36 +9,40 @@ import os
 import sys
 
 # Our own imports
-from setupbase import (
-    create_cmdclass, ensure_python, find_packages, get_version,
-    command_for_func, combine_commands, install_npm, HERE, run,
+from jupyter_packaging import (
+    create_cmdclass, get_version,
+    command_for_func, combine_commands, install_npm, run,
     skip_npm, which, log
 )
 
-from setuptools import setup
+from setuptools import setup, find_packages
 from setuptools.command.develop import develop
 
 
+HERE = os.path.abspath(os.path.dirname(__file__))
+
+
 NAME = 'jupyterlab'
-DESCRIPTION = 'The JupyterLab notebook server extension.'
+DESCRIPTION = 'The JupyterLab server extension.'
 
 with open(pjoin(HERE, 'README.md')) as fid:
     LONG_DESCRIPTION = fid.read()
 
-ensure_python(['>=3.5'])
 
 data_files_spec = [
     ('share/jupyter/lab/static', '%s/static' % NAME, '**'),
     ('share/jupyter/lab/schemas', '%s/schemas' % NAME, '**'),
     ('share/jupyter/lab/themes', '%s/themes' % NAME, '**'),
+    ('etc/jupyter/jupyter_server_config.d',
+     'jupyter-config/jupyter_server_config.d', 'jupyterlab.json'),
     ('etc/jupyter/jupyter_notebook_config.d',
      'jupyter-config/jupyter_notebook_config.d', 'jupyterlab.json'),
 ]
 
 package_data_spec = dict()
 package_data_spec[NAME] = [
-    'staging/*', 'staging/templates/*', 'static/**', 'tests/mock_packages/**',
-    'themes/**', 'schemas/**', '*.js'
+    'staging/*', 'staging/templates/*', 'staging/.yarnrc',
+    'static/**', 'tests/mock_packages/**', 'themes/**', 'schemas/**', '*.js'
 ]
 
 
@@ -52,7 +56,7 @@ VERSION = get_version('%s/_version.py' % NAME)
 
 
 def check_assets():
-    from distutils.version import LooseVersion
+    from packaging.version import Version
 
     # Representative files that should exist after a successful build
     targets = [
@@ -74,7 +78,7 @@ def check_assets():
     with open(target) as fid:
         version = json.load(fid)['jupyterlab']['version']
 
-    if LooseVersion(version) != LooseVersion(VERSION):
+    if Version(version) != Version(VERSION):
         raise ValueError('Version mismatch, please run `build:update`')
 
 
@@ -121,6 +125,7 @@ setup_args = dict(
     license='BSD',
     platforms='Linux, Mac OS X, Windows',
     keywords=['ipython', 'jupyter', 'Web'],
+    python_requires=">=3.6",
     classifiers=[
         'Development Status :: 5 - Production/Stable',
         'Intended Audience :: Developers',
@@ -129,37 +134,49 @@ setup_args = dict(
         'License :: OSI Approved :: BSD License',
         'Programming Language :: Python',
         'Programming Language :: Python :: 3',
-        'Programming Language :: Python :: 3.5',
         'Programming Language :: Python :: 3.6',
         'Programming Language :: Python :: 3.7',
+        'Programming Language :: Python :: 3.8',
     ],
 )
 
 
 setup_args['install_requires'] = [
-    'notebook>=4.3.1',
+    'ipython',
+    'packaging',
     'tornado!=6.0.0, !=6.0.1, !=6.0.2',
-    'jupyterlab_server~=1.0.0',
+    'jupyterlab_server~=2.0.0rc1',
+    'jupyter_server~=1.0.1',
+    'nbclassic~=0.2.0',
     'jinja2>=2.10'
 ]
 
+
 setup_args['extras_require'] = {
     'test': [
-        'pytest',
+        'pytest>=6.0',
+        'pytest-cov',
+        'pytest-tornasync',
+        'pytest-console-scripts',
         'pytest-check-links',
-        'requests'
+        'requests',
+        'wheel',
+        'virtualenv'
     ],
+    'test:sys_platform == "win32"': ['nose-exclude'],
     'docs': [
-        'sphinx',
+        'jsx-lexer',
         'recommonmark',
+        'sphinx',
         'sphinx_rtd_theme',
         'sphinx-copybutton'
     ],
 }
 
 
+setup_args['package_data'] = package_data_spec
 setup_args['include_package_data'] = True
-setup_args['python_requires'] = '>=3.5'
+setup_args['python_requires'] = '>=3.6'
 
 # Force entrypoints with setuptools (needed for Windows, unconditional
 # because of wheels)
@@ -169,7 +186,10 @@ setup_args['entry_points'] = {
         'jupyter-labextension = jupyterlab.labextensions:main',
         'jupyter-labhub = jupyterlab.labhubapp:main',
         'jlpm = jupyterlab.jlpmapp:main',
-    ]
+    ],
+    'pytest11': [
+        'pytest_jupyterlab = jupyterlab.pytest_plugin'
+    ],
 }
 
 

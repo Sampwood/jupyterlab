@@ -55,7 +55,8 @@ export class SettingManager extends DataConnector<
     const response = await makeRequest(url, {}, serverSettings);
 
     if (response.status !== 200) {
-      throw new ResponseError(response);
+      const err = await ResponseError.create(response);
+      throw err;
     }
 
     // Assert what type the server response is returning.
@@ -105,7 +106,8 @@ export class SettingManager extends DataConnector<
     const { makeRequest, ResponseError } = ServerConnection;
     const base = baseUrl + appUrl;
     const url = Private.url(base, id);
-    const init = { body: raw, method: 'PUT' };
+    // NOTE: 'raw' is JSON5 (not valid JSON), so we encode it as a string in a valid JSON body
+    const init = { body: JSON.stringify({ raw }), method: 'PUT' };
     const response = await makeRequest(url, init, serverSettings);
 
     if (response.status !== 204) {

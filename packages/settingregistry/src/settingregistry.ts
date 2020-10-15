@@ -3,7 +3,7 @@
 
 import Ajv from 'ajv';
 
-import * as json from 'json5';
+import * as json5 from 'json5';
 
 import { CommandRegistry } from '@lumino/commands';
 
@@ -152,7 +152,7 @@ export class DefaultSchemaValidator implements ISchemaValidator {
     // Parse the raw commented JSON into a user map.
     let user: JSONObject;
     try {
-      user = json.parse(plugin.raw) as JSONObject;
+      user = json5.parse(plugin.raw) as JSONObject;
     } catch (error) {
       if (error instanceof SyntaxError) {
         return [
@@ -215,11 +215,11 @@ export class DefaultSchemaValidator implements ISchemaValidator {
   ): ISchemaValidator.IError[] | null {
     const composer = this._composer;
     const validator = this._validator;
-    const validate = validator.getSchema('jupyterlab-plugin-schema');
+    const validate = validator.getSchema('jupyterlab-plugin-schema')!;
 
     // Validate against the main schema.
-    if (!(validate(schema) as boolean)) {
-      return validate.errors as ISchemaValidator.IError[];
+    if (!(validate!(schema) as boolean)) {
+      return validate!.errors as ISchemaValidator.IError[];
     }
 
     // Validate against the JSON schema meta-schema.
@@ -336,7 +336,7 @@ export class SettingRegistry implements ISettingRegistry {
     await this._ready;
 
     const plugins = this.plugins;
-    const registry = this;
+    const registry = this; // eslint-disable-line
 
     // If the plugin exists, resolve.
     if (plugin in plugins) {
@@ -360,8 +360,8 @@ export class SettingRegistry implements ISettingRegistry {
     await this._ready;
 
     const fetched = await this.connector.fetch(plugin);
-    const plugins = this.plugins;
-    const registry = this;
+    const plugins = this.plugins; // eslint-disable-line
+    const registry = this; // eslint-disable-line
 
     if (fetched === undefined) {
       throw [
@@ -398,7 +398,7 @@ export class SettingRegistry implements ISettingRegistry {
       return;
     }
 
-    const raw = json.parse(plugins[plugin].raw);
+    const raw = json5.parse(plugins[plugin].raw);
 
     // Delete both the value and any associated comment.
     delete raw[key];
@@ -431,7 +431,7 @@ export class SettingRegistry implements ISettingRegistry {
     }
 
     // Parse the raw JSON string removing all comments and return an object.
-    const raw = json.parse(plugins[plugin].raw);
+    const raw = json5.parse(plugins[plugin].raw);
 
     plugins[plugin].raw = Private.annotatedPlugin(plugins[plugin], {
       ...raw,
@@ -543,7 +543,7 @@ export class SettingRegistry implements ISettingRegistry {
           await this._load(await this._transform('fetch', plugin));
         } catch (errors) {
           /* Ignore preload errors. */
-          console.log('Ignored setting registry preload errors.', errors);
+          console.warn('Ignored setting registry preload errors.', errors);
         }
       })
     );
@@ -1158,7 +1158,7 @@ namespace Private {
 
     // Iterate through and populate each child property.
     const props = schema.properties || {};
-    for (let property in props) {
+    for (const property in props) {
       result[property] = reifyDefault(props[property]);
     }
 

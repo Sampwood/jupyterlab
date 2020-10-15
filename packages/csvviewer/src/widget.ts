@@ -30,6 +30,7 @@ import { PanelLayout, Widget } from '@lumino/widgets';
 import { CSVDelimiter } from './toolbar';
 
 import { DSVModel } from './model';
+import { ITranslator } from '@jupyterlab/translation';
 
 /**
  * The class name added to a CSV viewer.
@@ -242,8 +243,8 @@ export class CSVViewer extends Widget {
   constructor(options: CSVViewer.IOptions) {
     super();
 
-    let context = (this._context = options.context);
-    let layout = (this.layout = new PanelLayout());
+    const context = (this._context = options.context);
+    const layout = (this.layout = new PanelLayout());
 
     this.addClass(CSV_CLASS);
 
@@ -365,9 +366,9 @@ export class CSVViewer extends Widget {
    * Create the model for the grid.
    */
   private _updateGrid(): void {
-    let data: string = this._context.model.toString();
-    let delimiter = this._delimiter;
-    let oldModel = this._grid.dataModel as DSVModel;
+    const data: string = this._context.model.toString();
+    const delimiter = this._delimiter;
+    const oldModel = this._grid.dataModel as DSVModel;
     const dataModel = (this._grid.dataModel = new DSVModel({
       data,
       delimiter
@@ -386,14 +387,18 @@ export class CSVViewer extends Widget {
       return;
     }
     const rendererConfig = this._baseRenderer;
+    const renderer = new TextRenderer({
+      textColor: rendererConfig.textColor,
+      horizontalAlignment: rendererConfig.horizontalAlignment,
+      backgroundColor: this._searchService.cellBackgroundColorRendererFunc(
+        rendererConfig
+      )
+    });
     this._grid.cellRenderers.update({
-      body: new TextRenderer({
-        textColor: rendererConfig.textColor,
-        horizontalAlignment: rendererConfig.horizontalAlignment,
-        backgroundColor: this._searchService.cellBackgroundColorRendererFunc(
-          rendererConfig
-        )
-      })
+      body: renderer,
+      'column-header': renderer,
+      'corner-header': renderer,
+      'row-header': renderer
     });
   }
 
@@ -450,7 +455,7 @@ export class CSVDocumentWidget extends DocumentWidget<CSVViewer> {
    * Set URI fragment identifier for rows
    */
   setFragment(fragment: string): void {
-    let parseFragments = fragment.split('=');
+    const parseFragments = fragment.split('=');
 
     // TODO: expand to allow columns and cells to be selected
     // reference: https://tools.ietf.org/html/rfc7111#section-3
@@ -480,6 +485,11 @@ export namespace CSVDocumentWidget {
   export interface IOptions
     extends DocumentWidget.IOptionsOptionalContent<CSVViewer> {
     delimiter?: string;
+
+    /**
+     * The application language translator.
+     */
+    translator?: ITranslator;
   }
 }
 
@@ -503,7 +513,8 @@ export class CSVViewerFactory extends ABCWidgetFactory<
   protected createNewWidget(
     context: DocumentRegistry.Context
   ): IDocumentWidget<CSVViewer> {
-    return new CSVDocumentWidget({ context });
+    const translator = this.translator;
+    return new CSVDocumentWidget({ context, translator });
   }
 }
 
@@ -520,6 +531,10 @@ export class TSVViewerFactory extends ABCWidgetFactory<
     context: DocumentRegistry.Context
   ): IDocumentWidget<CSVViewer> {
     const delimiter = '\t';
-    return new CSVDocumentWidget({ context, delimiter });
+    return new CSVDocumentWidget({
+      context,
+      delimiter,
+      translator: this.translator
+    });
   }
 }

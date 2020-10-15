@@ -9,9 +9,17 @@ import { URLExt } from '@jupyterlab/coreutils';
 
 import { ServerConnection } from '@jupyterlab/services';
 
+import {
+  nullTranslator,
+  ITranslator,
+  TranslationBundle
+} from '@jupyterlab/translation';
+
 import { Poll } from '@lumino/polling';
 
 import { TextItem } from '..';
+
+import { nbresuse } from '../style/text';
 
 /**
  * A VDomRenderer for showing memory usage by a kernel.
@@ -20,8 +28,10 @@ export class MemoryUsage extends VDomRenderer<MemoryUsage.Model> {
   /**
    * Construct a new memory usage status item.
    */
-  constructor() {
+  constructor(translator?: ITranslator) {
     super(new MemoryUsage.Model({ refreshRate: 5000 }));
+    this.translator = translator || nullTranslator;
+    this._trans = this.translator.load('jupyterlab');
   }
 
   /**
@@ -33,18 +43,36 @@ export class MemoryUsage extends VDomRenderer<MemoryUsage.Model> {
     }
     let text: string;
     if (this.model.memoryLimit === null) {
-      text = `Mem: ${this.model.currentMemory.toFixed(
-        Private.DECIMAL_PLACES
-      )} ${this.model.units}`;
-    } else {
-      text = `Mem: ${this.model.currentMemory.toFixed(
-        Private.DECIMAL_PLACES
-      )} / ${this.model.memoryLimit.toFixed(Private.DECIMAL_PLACES)} ${
+      text = this._trans.__(
+        'Mem: %1 %2',
+        this.model.currentMemory.toFixed(Private.DECIMAL_PLACES),
         this.model.units
-      }`;
+      );
+    } else {
+      text = this._trans.__(
+        'Mem: %1 / %2 %3',
+        this.model.currentMemory.toFixed(Private.DECIMAL_PLACES),
+        this.model.memoryLimit.toFixed(Private.DECIMAL_PLACES),
+        this.model.units
+      );
     }
-    return <TextItem title="Current memory usage" source={text} />;
+    if (!this.model.usageWarning) {
+      return (
+        <TextItem title={this._trans.__('Current mem usage')} source={text} />
+      );
+    } else {
+      return (
+        <TextItem
+          title={this._trans.__('Current mem usage')}
+          source={text}
+          className={nbresuse}
+        />
+      );
+    }
   }
+
+  protected translator: ITranslator;
+  private _trans: TranslationBundle;
 }
 
 /**
@@ -120,6 +148,13 @@ export namespace MemoryUsage {
     }
 
     /**
+     * The warning for memory usage.
+     */
+    get usageWarning(): boolean {
+      return this._warn;
+    }
+
+    /**
      * Dispose of the memory usage model.
      */
     dispose(): void {
@@ -137,18 +172,23 @@ export namespace MemoryUsage {
       const oldCurrentMemory = this._currentMemory;
       const oldMemoryLimit = this._memoryLimit;
       const oldUnits = this._units;
+      const oldUsageWarning = this._warn;
 
       if (value === null) {
         this._metricsAvailable = false;
         this._currentMemory = 0;
         this._memoryLimit = null;
         this._units = 'B';
+        this._warn = false;
       } else {
         const numBytes = value.rss;
         const memoryLimit = value.limits.memory
           ? value.limits.memory.rss
           : null;
         const [currentMemory, units] = Private.convertToLargestUnit(numBytes);
+        const usageWarning = value.limits.memory
+          ? value.limits.memory.warn
+          : false;
 
         this._metricsAvailable = true;
         this._currentMemory = currentMemory;
@@ -156,13 +196,15 @@ export namespace MemoryUsage {
         this._memoryLimit = memoryLimit
           ? memoryLimit / Private.MEMORY_UNIT_LIMITS[units]
           : null;
+        this._warn = usageWarning;
       }
 
       if (
         this._currentMemory !== oldCurrentMemory ||
         this._units !== oldUnits ||
         this._memoryLimit !== oldMemoryLimit ||
-        this._metricsAvailable !== oldMetricsAvailable
+        this._metricsAvailable !== oldMetricsAvailable ||
+        this._warn !== oldUsageWarning
       ) {
         this.stateChanged.emit(void 0);
       }
@@ -173,6 +215,7 @@ export namespace MemoryUsage {
     private _metricsAvailable: boolean = false;
     private _poll: Poll<Private.IMetricRequestResult | null>;
     private _units: MemoryUnit = 'B';
+    private _warn: boolean = false;
   }
 
   /**
@@ -271,7 +314,7 @@ namespace Private {
     limits: {
       memory?: {
         rss: number;
-        warn?: number;
+        warn: boolean;
       };
     };
   }
@@ -288,11 +331,7 @@ namespace Private {
     const response = await request;
 
     if (response.ok) {
-      try {
-        return await response.json();
-      } catch (error) {
-        throw error;
-      }
+      return await response.json();
     }
 
     return null;

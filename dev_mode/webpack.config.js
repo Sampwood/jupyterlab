@@ -1,72 +1,133 @@
-/*-----------------------------------------------------------------------------
+/* -----------------------------------------------------------------------------
 | Copyright (c) Jupyter Development Team.
 | Distributed under the terms of the Modified BSD License.
 |----------------------------------------------------------------------------*/
 
-var plib = require('path');
-var fs = require('fs-extra');
-var Handlebars = require('handlebars');
-var HtmlWebpackPlugin = require('html-webpack-plugin');
-var webpack = require('webpack');
-var BundleAnalyzerPlugin = require('webpack-bundle-analyzer')
+const plib = require('path');
+const fs = require('fs-extra');
+const Handlebars = require('handlebars');
+const HtmlWebpackPlugin = require('html-webpack-plugin');
+const webpack = require('webpack');
+const merge = require('webpack-merge').default;
+const BundleAnalyzerPlugin = require('webpack-bundle-analyzer')
   .BundleAnalyzerPlugin;
+const baseConfig = require('@jupyterlab/builder/lib/webpack.config.base');
+const { ModuleFederationPlugin } = webpack.container;
 
-var Build = require('@jupyterlab/buildutils').Build;
-var WPPlugin = require('@jupyterlab/buildutils').WPPlugin;
-var package_data = require('./package.json');
+const Build = require('@jupyterlab/builder').Build;
+const WPPlugin = require('@jupyterlab/builder').WPPlugin;
+const package_data = require('./package.json');
 
 // Handle the extensions.
-var jlab = package_data.jupyterlab;
-var extensions = jlab.extensions;
-var mimeExtensions = jlab.mimeExtensions;
-var packageNames = Object.keys(mimeExtensions).concat(Object.keys(extensions));
+const jlab = package_data.jupyterlab;
+const extensions = jlab.extensions;
+const mimeExtensions = jlab.mimeExtensions;
+const { externalExtensions } = jlab;
+const packageNames = Object.keys(mimeExtensions).concat(
+  Object.keys(extensions),
+  Object.keys(externalExtensions)
+);
+
+// go throught each external extension
+// add to mapping of extension and mime extensions, of package name
+// to path of the extension.
+for (const key in externalExtensions) {
+  const {
+    jupyterlab: { extension, mimeExtension }
+  } = require(`${key}/package.json`);
+  if (extension !== undefined) {
+    extensions[key] = extension === true ? '' : extension;
+  }
+  if (mimeExtension !== undefined) {
+    mimeExtensions[key] = mimeExtension === true ? '' : mimeExtension;
+  }
+}
 
 // Ensure a clear build directory.
-var buildDir = plib.resolve(jlab.buildDir);
+const buildDir = plib.resolve(jlab.buildDir);
 if (fs.existsSync(buildDir)) {
   fs.removeSync(buildDir);
 }
 fs.ensureDirSync(buildDir);
 
+const outputDir = plib.resolve(jlab.outputDir);
+
 // Build the assets
-var extraConfig = Build.ensureAssets({
+const extraConfig = Build.ensureAssets({
   packageNames: packageNames,
-  output: jlab.outputDir
+  output: outputDir
 });
 
+// Build up singleton metadata for module federation.
+const singletons = {};
+
+package_data.jupyterlab.singletonPackages.forEach(element => {
+  singletons[element] = { singleton: true };
+});
+
+// Go through each external extension
+// add to mapping of extension and mime extensions, of package name
+// to path of the extension.
+for (const key in externalExtensions) {
+  const {
+    jupyterlab: { extension, mimeExtension }
+  } = require(`${key}/package.json`);
+  if (extension !== undefined) {
+    extensions[key] = extension === true ? '' : extension;
+  }
+  if (mimeExtension !== undefined) {
+    mimeExtensions[key] = mimeExtension === true ? '' : mimeExtension;
+  }
+}
+
 // Create the entry point file.
-var source = fs.readFileSync('index.js').toString();
-var template = Handlebars.compile(source);
-var data = {
+const source = fs.readFileSync('index.js').toString();
+const template = Handlebars.compile(source);
+const extData = {
   jupyterlab_extensions: extensions,
   jupyterlab_mime_extensions: mimeExtensions
 };
-var result = template(data);
+const result = template(extData);
 
 fs.writeFileSync(plib.join(buildDir, 'index.out.js'), result);
 fs.copySync('./package.json', plib.join(buildDir, 'package.json'));
-fs.copySync(
-  plib.join(jlab.outputDir, 'imports.css'),
-  plib.join(buildDir, 'imports.css')
-);
+if (outputDir !== buildDir) {
+  fs.copySync(
+    plib.join(outputDir, 'imports.css'),
+    plib.join(buildDir, 'imports.css')
+  );
+}
+
+// Make a bootstrap entrypoint
+const entryPoint = plib.join(buildDir, 'bootstrap.js');
+const bootstrap = 'import("./index.out.js");';
+fs.writeFileSync(entryPoint, bootstrap);
 
 // Set up variables for the watch mode ignore plugins
-let watched = {};
-let ignoreCache = Object.create(null);
-Object.keys(jlab.linkedPackages).forEach(function(name) {
-  if (name in watched) return;
+const watched = {};
+const ignoreCache = Object.create(null);
+let watchNodeModules = false;
+Object.keys(jlab.linkedPackages).forEach(function (name) {
+  if (name in watched) {
+    return;
+  }
   const localPkgPath = require.resolve(plib.join(name, 'package.json'));
   watched[name] = plib.dirname(localPkgPath);
+  if (localPkgPath.indexOf('node_modules') !== -1) {
+    watchNodeModules = true;
+  }
 });
 
 // Set up source-map-loader to look in watched lib dirs
-let sourceMapRes = Object.values(watched).reduce((res, name) => {
+const sourceMapRes = Object.values(watched).reduce((res, name) => {
   res.push(new RegExp(name + '/lib'));
   return res;
 }, []);
 
 /**
  * Sync a local path to a linked package path if they are files and differ.
+ * This is used by `jupyter lab --watch` to synchronize linked packages
+ * and has no effect in `jupyter lab --dev-mode --watch`.
  */
 function maybeSync(localPath, name, rest) {
   const stats = fs.statSync(localPath);
@@ -77,7 +138,7 @@ function maybeSync(localPath, name, rest) {
   if (source === fs.realpathSync(localPath)) {
     return;
   }
-  fs.watchFile(source, { interval: 500 }, function(curr) {
+  fs.watchFile(source, { interval: 500 }, function (curr) {
     if (!curr || curr.nlink === 0) {
       return;
     }
@@ -132,14 +193,24 @@ const plugins = [
   }),
   new HtmlWebpackPlugin({
     chunksSortMode: 'none',
-    template: plib.join('templates', 'template.html'),
+    template: plib.join(__dirname, 'templates', 'template.html'),
     title: jlab.name || 'JupyterLab'
   }),
-  new webpack.HashedModuleIdsPlugin(),
   // custom plugin for ignoring files during a `--watch` build
   new WPPlugin.FilterWatchIgnorePlugin(ignored),
   // custom plugin that copies the assets to the static directory
-  new WPPlugin.FrontEndPlugin(buildDir, jlab.staticDir)
+  new WPPlugin.FrontEndPlugin(buildDir, jlab.staticDir),
+  new ModuleFederationPlugin({
+    library: {
+      type: 'var',
+      name: ['_JUPYTERLAB', 'CORE_LIBRARY_FEDERATION']
+    },
+    name: 'CORE_FEDERATION',
+    shared: {
+      ...package_data.resolutions,
+      ...singletons
+    }
+  })
 ];
 
 if (process.argv.includes('--analyze')) {
@@ -147,76 +218,15 @@ if (process.argv.includes('--analyze')) {
 }
 
 module.exports = [
-  {
+  merge(baseConfig, {
     mode: 'development',
     entry: {
-      main: ['whatwg-fetch', plib.resolve(buildDir, 'index.out.js')]
-    },
-    // Map Phosphor files to Lumino files.
-    resolve: {
-      alias: {
-        '@phosphor/algorithm$': plib.resolve(
-          __dirname,
-          'node_modules/@lumino/algorithm/lib/index.js'
-        ),
-        '@phosphor/application$': plib.resolve(
-          __dirname,
-          'node_modules/@lumino/application/lib/index.js'
-        ),
-        '@phosphor/commands$': plib.resolve(
-          __dirname,
-          'node_modules/@lumino/commands/lib/index.js'
-        ),
-        '@phosphor/coreutils$': plib.resolve(
-          __dirname,
-          'node_modules/@lumino/coreutils/lib/index.js'
-        ),
-        '@phosphor/disposable$': plib.resolve(
-          __dirname,
-          'node_modules/@lumino/disposable/lib/index.js'
-        ),
-        '@phosphor/domutils$': plib.resolve(
-          __dirname,
-          'node_modules/@lumino/domutils/lib/index.js'
-        ),
-        '@phosphor/dragdrop$': plib.resolve(
-          __dirname,
-          'node_modules/@lumino/dragdrop/lib/index.js'
-        ),
-        '@phosphor/dragdrop/style': plib.resolve(
-          __dirname,
-          'node_modules/@lumino/widgets/style'
-        ),
-        '@phosphor/messaging$': plib.resolve(
-          __dirname,
-          'node_modules/@lumino/messaging/lib/index.js'
-        ),
-        '@phosphor/properties$': plib.resolve(
-          __dirname,
-          'node_modules/@lumino/properties/lib'
-        ),
-        '@phosphor/signaling': plib.resolve(
-          __dirname,
-          'node_modules/@lumino/signaling/lib/index.js'
-        ),
-        '@phosphor/widgets/style': plib.resolve(
-          __dirname,
-          'node_modules/@lumino/widgets/style'
-        ),
-        '@phosphor/virtualdom$': plib.resolve(
-          __dirname,
-          'node_modules/@lumino/virtualdom/lib/index.js'
-        ),
-        '@phosphor/widgets$': plib.resolve(
-          __dirname,
-          'node_modules/@lumino/widgets/lib/index.js'
-        )
-      }
+      main: ['./publicpath', 'whatwg-fetch', entryPoint]
     },
     output: {
       path: plib.resolve(buildDir),
       publicPath: '{{page_config.fullStaticUrl}}/',
-      filename: '[name].[chunkhash].js'
+      filename: '[name].[contenthash].js'
     },
     optimization: {
       splitChunks: {
@@ -225,63 +235,26 @@ module.exports = [
     },
     module: {
       rules: [
-        { test: /\.css$/, use: ['style-loader', 'css-loader'] },
-        { test: /\.md$/, use: 'raw-loader' },
-        { test: /\.txt$/, use: 'raw-loader' },
         {
           test: /\.js$/,
           include: sourceMapRes,
           use: ['source-map-loader'],
           enforce: 'pre'
-        },
-        { test: /\.(jpg|png|gif)$/, use: 'file-loader' },
-        { test: /\.js.map$/, use: 'file-loader' },
-        {
-          test: /\.woff2(\?v=\d+\.\d+\.\d+)?$/,
-          use: 'url-loader?limit=10000&mimetype=application/font-woff'
-        },
-        {
-          test: /\.woff(\?v=\d+\.\d+\.\d+)?$/,
-          use: 'url-loader?limit=10000&mimetype=application/font-woff'
-        },
-        {
-          test: /\.ttf(\?v=\d+\.\d+\.\d+)?$/,
-          use: 'url-loader?limit=10000&mimetype=application/octet-stream'
-        },
-        {
-          test: /\.otf(\?v=\d+\.\d+\.\d+)?$/,
-          use: 'url-loader?limit=10000&mimetype=application/octet-stream'
-        },
-        { test: /\.eot(\?v=\d+\.\d+\.\d+)?$/, use: 'file-loader' },
-        {
-          // In .css files, svg is loaded as a data URI.
-          test: /\.svg(\?v=\d+\.\d+\.\d+)?$/,
-          issuer: { test: /\.css$/ },
-          use: {
-            loader: 'svg-url-loader',
-            options: { encoding: 'none', limit: 10000 }
-          }
-        },
-        {
-          // In .ts and .tsx files (both of which compile to .js), svg files
-          // must be loaded as a raw string instead of data URIs.
-          test: /\.svg(\?v=\d+\.\d+\.\d+)?$/,
-          issuer: { test: /\.js$/ },
-          use: {
-            loader: 'raw-loader'
-          }
         }
       ]
     },
-    watchOptions: {
-      poll: 333
-    },
-    node: {
-      fs: 'empty'
-    },
-    bail: true,
     devtool: 'inline-source-map',
     externals: ['node-fetch', 'ws'],
     plugins
-  }
+  })
 ].concat(extraConfig);
+
+// Needed to watch changes in linked extensions in node_modules
+// (jupyter lab --watch)
+// See https://github.com/webpack/webpack/issues/11612
+if (watchNodeModules) {
+  module.exports[0].snapshot = { managedPaths: [] };
+}
+
+const logPath = plib.join(buildDir, 'build_log.json');
+fs.writeFileSync(logPath, JSON.stringify(module.exports, null, '  '));

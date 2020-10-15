@@ -28,6 +28,7 @@
   --jp-icon-circle: url('icons/toolbar/circle.svg');
   --jp-icon-clear: url('icons/toolbar/clear.svg');
   --jp-icon-close: url('icons/toolbar/close.svg');
+  --jp-icon-code: url('icons/toolbar/code.svg');
   --jp-icon-console: url('icons/filetype/console.svg');
   --jp-icon-copy: url('icons/toolbar/copy.svg');
   --jp-icon-cut: url('icons/toolbar/cut.svg');
@@ -35,6 +36,7 @@
   --jp-icon-edit: url('icons/toolbar/edit.svg');
   --jp-icon-ellipses: url('icons/toolbar/ellipses.svg');
   --jp-icon-extension: url('icons/sidebar/extension.svg');
+  --jp-icon-fast-forward: url('icons/toolbar/fast-forward.svg');
   --jp-icon-file-upload: url('icons/toolbar/file-upload.svg');
   --jp-icon-file: url('icons/filetype/file.svg');
   --jp-icon-filter-list: url('icons/toolbar/filter-list.svg');
@@ -52,15 +54,19 @@
   --jp-icon-line-form: url('icons/statusbar/line-form.svg');
   --jp-icon-link: url('icons/toolbar/link.svg');
   --jp-icon-list: url('icons/statusbar/list.svg');
+  --jp-icon-listings-info: url('icons/listings/listings-info.svg');
   --jp-icon-markdown: url('icons/filetype/markdown.svg');
   --jp-icon-new-folder: url('icons/toolbar/new-folder.svg');
   --jp-icon-not-trusted: url('icons/statusbar/not-trusted.svg');
   --jp-icon-notebook: url('icons/filetype/notebook.svg');
+  --jp-icon-numbering: url('icons/toolbar/numbering.svg');
   --jp-icon-palette: url('icons/sidebar/palette.svg');
   --jp-icon-paste: url('icons/toolbar/paste.svg');
+  --jp-icon-pdf: url('icons/filetype/pdf.svg');
   --jp-icon-python: url('icons/filetype/python.svg');
   --jp-icon-r-kernel: url('icons/filetype/r-kernel.svg');
   --jp-icon-react: url('icons/filetype/react.svg');
+  --jp-icon-redo: url('icons/toolbar/redo.svg');
   --jp-icon-refresh: url('icons/toolbar/refresh.svg');
   --jp-icon-regex: url('icons/search/regex.svg');
   --jp-icon-run: url('icons/toolbar/run.svg');
@@ -71,8 +77,10 @@
   --jp-icon-spreadsheet: url('icons/filetype/spreadsheet.svg');
   --jp-icon-stop: url('icons/toolbar/stop.svg');
   --jp-icon-tab: url('icons/sidebar/tab.svg');
+  --jp-icon-tag: url('icons/toolbar/tag.svg');
   --jp-icon-terminal: url('icons/statusbar/terminal.svg');
   --jp-icon-text-editor: url('icons/filetype/text-editor.svg');
+  --jp-icon-toc: url('icons/sidebar/toc.svg');
   --jp-icon-trusted: url('icons/statusbar/trusted.svg');
   --jp-icon-undo: url('icons/toolbar/undo.svg');
   --jp-icon-vega: url('icons/filetype/vega.svg');
@@ -129,6 +137,9 @@
 .jp-CloseIcon {
   background-image: var(--jp-icon-close);
 }
+.jp-CodeIcon {
+  background-image: var(--jp-icon-code);
+}
 .jp-ConsoleIcon {
   background-image: var(--jp-icon-console);
 }
@@ -149,6 +160,9 @@
 }
 .jp-ExtensionIcon {
   background-image: var(--jp-icon-extension);
+}
+.jp-FastForwardIcon {
+  background-image: var(--jp-icon-fast-forward);
 }
 .jp-FileIcon {
   background-image: var(--jp-icon-file);
@@ -201,6 +215,9 @@
 .jp-ListIcon {
   background-image: var(--jp-icon-list);
 }
+.jp-ListingsInfoIcon {
+  background-image: var(--jp-icon-listings-info);
+}
 .jp-MarkdownIcon {
   background-image: var(--jp-icon-markdown);
 }
@@ -213,11 +230,17 @@
 .jp-NotebookIcon {
   background-image: var(--jp-icon-notebook);
 }
+.jp-NumberingIcon {
+  background-image: var(--jp-icon-numbering);
+}
 .jp-PaletteIcon {
   background-image: var(--jp-icon-palette);
 }
 .jp-PasteIcon {
   background-image: var(--jp-icon-paste);
+}
+.jp-PdfIcon {
+  background-image: var(--jp-icon-pdf);
 }
 .jp-PythonIcon {
   background-image: var(--jp-icon-python);
@@ -227,6 +250,9 @@
 }
 .jp-ReactIcon {
   background-image: var(--jp-icon-react);
+}
+.jp-RedoIcon {
+  background-image: var(--jp-icon-redo);
 }
 .jp-RefreshIcon {
   background-image: var(--jp-icon-refresh);
@@ -258,11 +284,17 @@
 .jp-TabIcon {
   background-image: var(--jp-icon-tab);
 }
+.jp-TagIcon {
+  background-image: var(--jp-icon-tag);
+}
 .jp-TerminalIcon {
   background-image: var(--jp-icon-terminal);
 }
 .jp-TextEditorIcon {
   background-image: var(--jp-icon-text-editor);
+}
+.jp-TocIcon {
+  background-image: var(--jp-icon-toc);
 }
 .jp-TrustedIcon {
   background-image: var(--jp-icon-trusted);

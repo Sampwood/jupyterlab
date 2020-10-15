@@ -13,6 +13,9 @@
       "path": "../apputils"
     },
     {
+      "path": "../coreutils"
+    },
+    {
       "path": "../markdownviewer"
     },
     {
@@ -20,6 +23,9 @@
     },
     {
       "path": "../settingregistry"
+    },
+    {
+      "path": "../translation"
     }
   ]
 }

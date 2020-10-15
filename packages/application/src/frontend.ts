@@ -7,7 +7,7 @@ import { DocumentRegistry } from '@jupyterlab/docregistry';
 
 import { ServiceManager } from '@jupyterlab/services';
 
-import { MenuSvg } from '@jupyterlab/ui-components';
+import { ContextMenuSvg } from '@jupyterlab/ui-components';
 
 import { IIterator } from '@lumino/algorithm';
 
@@ -15,36 +15,51 @@ import { Application, IPlugin } from '@lumino/application';
 
 import { Token } from '@lumino/coreutils';
 
+import { ISignal, Signal } from '@lumino/signaling';
+
 import { Widget } from '@lumino/widgets';
 
 /**
  * The type for all JupyterFrontEnd application plugins.
  *
  * @typeparam T - The type that the plugin `provides` upon being activated.
+ *
+ * @typeparam U - The type of the application shell.
+ *
+ * @typeparam V - The type that defines the application formats.
  */
-export type JupyterFrontEndPlugin<T> = IPlugin<JupyterFrontEnd, T>;
+export type JupyterFrontEndPlugin<
+  T,
+  U extends JupyterFrontEnd.IShell = JupyterFrontEnd.IShell,
+  V extends string = 'desktop' | 'mobile'
+> = IPlugin<JupyterFrontEnd<U, V>, T>;
 
 /**
  * The base Jupyter front-end application class.
  *
  * @typeparam `T` - The `shell` type. Defaults to `JupyterFrontEnd.IShell`.
  *
+ * @typeparam `U` - The type for supported format names. Defaults to `string`.
+ *
  * #### Notes
  * This type is useful as a generic application against which front-end plugins
- * can be authored. It inherits from the phosphor `Application`.
+ * can be authored. It inherits from the Lumino `Application`.
  */
 export abstract class JupyterFrontEnd<
-  T extends JupyterFrontEnd.IShell = JupyterFrontEnd.IShell
+  T extends JupyterFrontEnd.IShell = JupyterFrontEnd.IShell,
+  U extends string = 'desktop' | 'mobile'
 > extends Application<T> {
   /**
    * Construct a new JupyterFrontEnd object.
    */
   constructor(options: JupyterFrontEnd.IOptions<T>) {
-    // render context menu with inline svg icon tweaks
-    options.contextMenuRenderer =
-      options.contextMenuRenderer || MenuSvg.defaultRenderer;
-
     super(options);
+
+    // render context menu/submenus with inline svg icon tweaks
+    this.contextMenu = new ContextMenuSvg({
+      commands: this.commands,
+      renderer: options.contextMenuRenderer
+    });
 
     // The default restored promise if one does not exist in the options.
     const restored = new Promise<void>(resolve => {
@@ -60,18 +75,6 @@ export abstract class JupyterFrontEnd<
       options.restored ||
       this.started.then(() => restored).catch(() => restored);
     this.serviceManager = options.serviceManager || new ServiceManager();
-
-    this.commands.addCommand(Private.CONTEXT_MENU_INFO, {
-      label: 'Shift+Right Click for Browser Menu',
-      isEnabled: () => false,
-      execute: () => void 0
-    });
-
-    this.contextMenu.addItem({
-      command: Private.CONTEXT_MENU_INFO,
-      selector: 'body',
-      rank: Infinity
-    });
   }
 
   /**
@@ -95,6 +98,11 @@ export abstract class JupyterFrontEnd<
   readonly commandLinker: CommandLinker;
 
   /**
+   * The application context menu.
+   */
+  readonly contextMenu: ContextMenuSvg;
+
+  /**
    * The document registry instance used by the application.
    */
   readonly docRegistry: DocumentRegistry;
@@ -110,17 +118,38 @@ export abstract class JupyterFrontEnd<
   readonly serviceManager: ServiceManager;
 
   /**
+   * The application form factor, e.g., `desktop` or `mobile`.
+   */
+  get format(): U {
+    return this._format;
+  }
+  set format(format: U) {
+    if (this._format !== format) {
+      this._format = format;
+      document.body.dataset['format'] = format;
+      this._formatChanged.emit(format);
+    }
+  }
+
+  /**
+   * A signal that emits when the application form factor changes.
+   */
+  get formatChanged(): ISignal<this, U> {
+    return this._formatChanged;
+  }
+
+  /**
    * Walks up the DOM hierarchy of the target of the active `contextmenu`
    * event, testing each HTMLElement ancestor for a user-supplied funcion. This can
    * be used to find an HTMLElement on which to operate, given a context menu click.
    *
-   * @param test - a function that takes an `HTMLElement` and returns a
+   * @param fn - a function that takes an `HTMLElement` and returns a
    *   boolean for whether it is the element the requester is seeking.
    *
    * @returns an HTMLElement or undefined, if none is found.
    */
   contextMenuHitTest(
-    test: (node: HTMLElement) => boolean
+    fn: (node: HTMLElement) => boolean
   ): HTMLElement | undefined {
     if (
       !this._contextMenuEvent ||
@@ -130,7 +159,7 @@ export abstract class JupyterFrontEnd<
     }
     let node: Node | null = this._contextMenuEvent.target;
     do {
-      if (node instanceof HTMLElement && test(node)) {
+      if (node instanceof HTMLElement && fn(node)) {
         return node;
       }
       node = node.parentNode;
@@ -156,7 +185,10 @@ export abstract class JupyterFrontEnd<
    */
   protected evtContextMenu(event: MouseEvent): void {
     this._contextMenuEvent = event;
-    if (event.shiftKey) {
+    if (
+      event.shiftKey ||
+      Private.suppressContextMenu(event.target as HTMLElement)
+    ) {
       return;
     }
     const opened = this.contextMenu.open(event);
@@ -167,7 +199,7 @@ export abstract class JupyterFrontEnd<
       // allow the native one to open.
       if (
         items.length === 1 &&
-        items[0].command === Private.CONTEXT_MENU_INFO
+        items[0].command === JupyterFrontEndContextMenu.contextMenu
       ) {
         this.contextMenu.menu.close();
         return;
@@ -179,6 +211,8 @@ export abstract class JupyterFrontEnd<
   }
 
   private _contextMenuEvent: MouseEvent;
+  private _format: U;
+  private _formatChanged = new Signal<this, U>(this);
 }
 
 /**
@@ -258,6 +292,22 @@ export namespace JupyterFrontEnd {
   }
 
   /**
+   * Is JupyterLab in document mode?
+   *
+   * @param path - Full URL of JupyterLab
+   * @param paths - The current IPaths object hydrated from PageConfig.
+   */
+  export function inDocMode(path: string, paths: IPaths) {
+    const docPattern = new RegExp(`^${paths.urls.doc}`);
+    const match = path.match(docPattern);
+    if (match) {
+      return true;
+    } else {
+      return false;
+    }
+  }
+
+  /**
    * The application paths dictionary token.
    */
   export const IPaths = new Token<IPaths>('@jupyterlab/application:IPaths');
@@ -273,11 +323,11 @@ export namespace JupyterFrontEnd {
       readonly base: string;
       readonly notFound?: string;
       readonly app: string;
+      readonly doc: string;
       readonly static: string;
       readonly settings: string;
       readonly themes: string;
-      readonly tree: string;
-      readonly workspaces: string;
+      readonly translations: string;
       readonly hubPrefix?: string;
       readonly hubHost?: string;
       readonly hubUser?: string;
@@ -351,8 +401,19 @@ export namespace JupyterFrontEnd {
  */
 namespace Private {
   /**
-   * An id for a private context-menu-info
-   * ersatz command.
+   * Returns whether the element is itself, or a child of, an element with the `jp-suppress-context-menu` data attribute.
    */
-  export const CONTEXT_MENU_INFO = '__internal:context-menu-info';
+  export function suppressContextMenu(element: HTMLElement): boolean {
+    return element.closest('[data-jp-suppress-context-menu]') !== null;
+  }
+}
+
+/**
+ * A namespace for the context menu override.
+ */
+export namespace JupyterFrontEndContextMenu {
+  /**
+   * An id for a private context-menu-info ersatz command.
+   */
+  export const contextMenu = '__internal:context-menu-info';
 }

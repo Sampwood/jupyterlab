@@ -84,6 +84,12 @@ pkg:csvviewer:
   - packages/csvviewer-extension/**/*
   - packages/csvviewer-extension/*
 
+pkg:debugger:
+  - packages/debugger/**/*
+  - packages/debugger/*
+  - packages/debugger-extension/**/*
+  - packages/debugger-extension/*
+
 pkg:docmanager:
   - packages/docmanager/**/*
   - packages/docmanager/*
@@ -246,10 +252,6 @@ pkg:statusbar:
   - packages/statusbar-extension/**/*
   - packages/statusbar-extension/*
 
-pkg:tabmanager:
-  - packages/tabmanager-extension/**/*
-  - packages/tabmanager-extension/*
-
 pkg:terminal:
   - packages/terminal/**/*
   - packages/terminal/*
@@ -267,6 +269,12 @@ pkg:tooltip:
   - packages/tooltip/*
   - packages/tooltip-extension/**/*
   - packages/tooltip-extension/*
+
+pkg:translation:
+  - packages/translation/**/*
+  - packages/translation/*
+  - packages/translation-extension/**/*
+  - packages/translation-extension/*
 
 pkg:ui-components:
   - packages/ui-components/**/*

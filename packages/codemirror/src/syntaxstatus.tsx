@@ -13,6 +13,8 @@ import {
   TextItem
 } from '@jupyterlab/statusbar';
 
+import { nullTranslator, ITranslator } from '@jupyterlab/translation';
+
 import { Mode } from '.';
 
 import { CommandRegistry } from '@lumino/commands';
@@ -66,8 +68,11 @@ export class EditorSyntaxStatus extends VDomRenderer<EditorSyntaxStatus.Model> {
   constructor(opts: EditorSyntaxStatus.IOptions) {
     super(new EditorSyntaxStatus.Model());
     this._commands = opts.commands;
+    this.translator = opts.translator || nullTranslator;
+    const trans = this.translator.load('jupyterlab');
+
     this.addClass(interactiveItem);
-    this.title.caption = 'Change text editor syntax highlighting';
+    this.title.caption = trans.__('Change text editor syntax highlighting');
   }
 
   /**
@@ -90,14 +95,14 @@ export class EditorSyntaxStatus extends VDomRenderer<EditorSyntaxStatus.Model> {
    */
   private _handleClick = () => {
     const modeMenu = new Menu({ commands: this._commands });
-    let command = 'codemirror:change-mode';
+    const command = 'codemirror:change-mode';
     if (this._popup) {
       this._popup.dispose();
     }
     Mode.getModeInfo()
       .sort((a, b) => {
-        let aName = a.name || '';
-        let bName = b.name || '';
+        const aName = a.name || '';
+        const bName = b.name || '';
         return aName.localeCompare(bName);
       })
       .forEach(spec => {
@@ -105,7 +110,7 @@ export class EditorSyntaxStatus extends VDomRenderer<EditorSyntaxStatus.Model> {
           return;
         }
 
-        let args: JSONObject = {
+        const args: JSONObject = {
           insertSpaces: true,
           name: spec.name!
         };
@@ -122,6 +127,7 @@ export class EditorSyntaxStatus extends VDomRenderer<EditorSyntaxStatus.Model> {
     });
   };
 
+  protected translator: ITranslator;
   private _commands: CommandRegistry;
   private _popup: Popup | null = null;
 }
@@ -202,5 +208,10 @@ export namespace EditorSyntaxStatus {
      * The application command registry.
      */
     commands: CommandRegistry;
+
+    /**
+     * The language translator.
+     */
+    translator?: ITranslator;
   }
 }

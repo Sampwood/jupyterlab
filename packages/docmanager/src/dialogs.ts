@@ -7,6 +7,8 @@ import { PathExt } from '@jupyterlab/coreutils';
 
 import { Contents } from '@jupyterlab/services';
 
+import { nullTranslator, ITranslator } from '@jupyterlab/translation';
+
 import { JSONObject } from '@lumino/coreutils';
 
 import { Widget } from '@lumino/widgets';
@@ -42,30 +44,38 @@ export interface IFileContainer extends JSONObject {
  */
 export function renameDialog(
   manager: IDocumentManager,
-  oldPath: string
+  oldPath: string,
+  translator?: ITranslator
 ): Promise<Contents.IModel | null> {
+  translator = translator || nullTranslator;
+  const trans = translator.load('jupyterlab');
+
   return showDialog({
-    title: 'Rename File',
+    title: trans.__('Rename File'),
     body: new RenameHandler(oldPath),
     focusNodeSelector: 'input',
-    buttons: [Dialog.cancelButton(), Dialog.okButton({ label: 'Rename' })]
+    buttons: [
+      Dialog.cancelButton({ label: trans.__('Cancel') }),
+      Dialog.okButton({ label: trans.__('Rename') })
+    ]
   }).then(result => {
     if (!result.value) {
       return null;
     }
     if (!isValidFileName(result.value)) {
       void showErrorMessage(
-        'Rename Error',
+        trans.__('Rename Error'),
         Error(
-          `"${result.value}" is not a valid name for a file. ` +
-            `Names must have nonzero length, ` +
-            `and cannot include "/", "\\", or ":"`
+          trans.__(
+            '"%1" is not a valid name for a file. Names must have nonzero length, and cannot include "/", "\\", or ":"',
+            result.value
+          )
         )
       );
       return null;
     }
-    let basePath = PathExt.dirname(oldPath);
-    let newPath = PathExt.join(basePath, result.value);
+    const basePath = PathExt.dirname(oldPath);
+    const newPath = PathExt.join(basePath, result.value);
     return renameFile(manager, oldPath, newPath);
   });
 }
@@ -94,11 +104,20 @@ export function renameFile(
 /**
  * Ask the user whether to overwrite a file.
  */
-export function shouldOverwrite(path: string): Promise<boolean> {
-  let options = {
-    title: 'Overwrite file?',
-    body: `"${path}" already exists, overwrite?`,
-    buttons: [Dialog.cancelButton(), Dialog.warnButton({ label: 'Overwrite' })]
+export function shouldOverwrite(
+  path: string,
+  translator?: ITranslator
+): Promise<boolean> {
+  translator = translator || nullTranslator;
+  const trans = translator.load('jupyterlab');
+
+  const options = {
+    title: trans.__('Overwrite file?'),
+    body: trans.__('"%1" already exists, overwrite?', path),
+    buttons: [
+      Dialog.cancelButton({ label: trans.__('Cancel') }),
+      Dialog.warnButton({ label: trans.__('Overwrite') })
+    ]
   };
   return showDialog(options).then(result => {
     return Promise.resolve(result.button.accept);
@@ -125,8 +144,8 @@ class RenameHandler extends Widget {
   constructor(oldPath: string) {
     super({ node: Private.createRenameNode(oldPath) });
     this.addClass(FILE_DIALOG_CLASS);
-    let ext = PathExt.extname(oldPath);
-    let value = (this.inputNode.value = PathExt.basename(oldPath));
+    const ext = PathExt.extname(oldPath);
+    const value = (this.inputNode.value = PathExt.basename(oldPath));
     this.inputNode.setSelectionRange(0, value.length - ext.length);
   }
 
@@ -152,17 +171,23 @@ namespace Private {
   /**
    * Create the node for a rename handler.
    */
-  export function createRenameNode(oldPath: string): HTMLElement {
-    let body = document.createElement('div');
-    let existingLabel = document.createElement('label');
-    existingLabel.textContent = 'File Path';
-    let existingPath = document.createElement('span');
+  export function createRenameNode(
+    oldPath: string,
+    translator?: ITranslator
+  ): HTMLElement {
+    translator = translator || nullTranslator;
+    const trans = translator.load('jupyterlab');
+
+    const body = document.createElement('div');
+    const existingLabel = document.createElement('label');
+    existingLabel.textContent = trans.__('File Path');
+    const existingPath = document.createElement('span');
     existingPath.textContent = oldPath;
 
-    let nameTitle = document.createElement('label');
-    nameTitle.textContent = 'New Name';
+    const nameTitle = document.createElement('label');
+    nameTitle.textContent = trans.__('New Name');
     nameTitle.className = RENAME_NEWNAME_TITLE_CLASS;
-    let name = document.createElement('input');
+    const name = document.createElement('input');
 
     body.appendChild(existingLabel);
     body.appendChild(existingPath);

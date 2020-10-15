@@ -10,6 +10,7 @@ import JSONTree from 'react-json-tree';
 import { JSONArray, JSONObject, JSONValue, JSONExt } from '@lumino/coreutils';
 
 import { InputGroup } from '@jupyterlab/ui-components';
+import { nullTranslator, ITranslator } from '@jupyterlab/translation';
 
 /**
  * The properties for the JSON tree component.
@@ -17,6 +18,11 @@ import { InputGroup } from '@jupyterlab/ui-components';
 export interface IProps {
   data: NonNullable<JSONValue>;
   metadata?: JSONObject;
+
+  /**
+   * The application language translator.
+   */
+  translator?: ITranslator;
 }
 
 /**
@@ -45,6 +51,9 @@ export class Component extends React.Component<IProps, IState> {
   };
 
   render() {
+    const translator = this.props.translator || nullTranslator;
+    const trans = translator.load('jupyterlab');
+
     const { data, metadata } = this.props;
     const root = metadata && metadata.root ? (metadata.root as string) : 'root';
     const keyPaths = this.state.filter
@@ -55,10 +64,10 @@ export class Component extends React.Component<IProps, IState> {
         <InputGroup
           className="filter"
           type="text"
-          placeholder="Filter..."
+          placeholder={trans.__('Filter...')}
           onChange={this.handleChange}
           value={this.state.value}
-          rightIcon="search"
+          rightIcon="ui-components:search"
         />
         <JSONTree
           data={data}
@@ -181,7 +190,7 @@ function filterPaths(
   }
   if (JSONExt.isObject(data)) {
     return Object.keys(data).reduce((result: JSONArray, key: string) => {
-      let item = data[key];
+      const item = data[key];
       if (
         item &&
         typeof item === 'object' &&

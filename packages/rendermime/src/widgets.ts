@@ -1,8 +1,10 @@
-/*-----------------------------------------------------------------------------
+/* -----------------------------------------------------------------------------
 | Copyright (c) Jupyter Development Team.
 | Distributed under the terms of the Modified BSD License.
 |----------------------------------------------------------------------------*/
 import { IRenderMime } from '@jupyterlab/rendermime-interfaces';
+
+import { nullTranslator, ITranslator } from '@jupyterlab/translation';
 
 import {
   ReadonlyJSONObject,
@@ -18,7 +20,8 @@ import * as renderers from './renderers';
 /**
  * A common base class for mime renderers.
  */
-export abstract class RenderedCommon extends Widget
+export abstract class RenderedCommon
+  extends Widget
   implements IRenderMime.IRenderer {
   /**
    * Construct a new rendered common widget.
@@ -31,6 +34,7 @@ export abstract class RenderedCommon extends Widget
     this.sanitizer = options.sanitizer;
     this.resolver = options.resolver;
     this.linkHandler = options.linkHandler;
+    this.translator = options.translator || nullTranslator;
     this.latexTypesetter = options.latexTypesetter;
     this.node.dataset['mimeType'] = this.mimeType;
   }
@@ -59,6 +63,11 @@ export abstract class RenderedCommon extends Widget
    * The latexTypesetter.
    */
   readonly latexTypesetter: IRenderMime.ILatexTypesetter | null;
+
+  /**
+   * The latexTypesetter.
+   */
+  readonly translator: ITranslator;
 
   /**
    * Render a mime model.
@@ -170,7 +179,8 @@ export class RenderedHTML extends RenderedHTMLCommon {
       sanitizer: this.sanitizer,
       linkHandler: this.linkHandler,
       shouldTypeset: this.isAttached,
-      latexTypesetter: this.latexTypesetter
+      latexTypesetter: this.latexTypesetter,
+      translator: this.translator
     });
   }
 
@@ -246,7 +256,7 @@ export class RenderedImage extends RenderedCommon {
    * @returns A promise which resolves when rendering is complete.
    */
   render(model: IRenderMime.IMimeModel): Promise<void> {
-    let metadata = model.metadata[this.mimeType] as
+    const metadata = model.metadata[this.mimeType] as
       | ReadonlyPartialJSONObject
       | undefined;
     return renderers.renderImage({
@@ -291,7 +301,8 @@ export class RenderedMarkdown extends RenderedHTMLCommon {
       sanitizer: this.sanitizer,
       linkHandler: this.linkHandler,
       shouldTypeset: this.isAttached,
-      latexTypesetter: this.latexTypesetter
+      latexTypesetter: this.latexTypesetter,
+      translator: this.translator
     });
   }
 
@@ -327,14 +338,15 @@ export class RenderedSVG extends RenderedCommon {
    * @returns A promise which resolves when rendering is complete.
    */
   render(model: IRenderMime.IMimeModel): Promise<void> {
-    let metadata = model.metadata[this.mimeType] as
+    const metadata = model.metadata[this.mimeType] as
       | ReadonlyJSONObject
       | undefined;
     return renderers.renderSVG({
       host: this.node,
       source: String(model.data[this.mimeType]),
       trusted: model.trusted,
-      unconfined: metadata && (metadata.unconfined as boolean | undefined)
+      unconfined: metadata && (metadata.unconfined as boolean | undefined),
+      translator: this.translator
     });
   }
 
@@ -373,7 +385,8 @@ export class RenderedText extends RenderedCommon {
     return renderers.renderText({
       host: this.node,
       sanitizer: this.sanitizer,
-      source: String(model.data[this.mimeType])
+      source: String(model.data[this.mimeType]),
+      translator: this.translator
     });
   }
 }
@@ -400,10 +413,13 @@ export class RenderedJavaScript extends RenderedCommon {
    * @returns A promise which resolves when rendering is complete.
    */
   render(model: IRenderMime.IMimeModel): Promise<void> {
+    const trans = this.translator.load('jupyterlab');
+
     return renderers.renderText({
       host: this.node,
       sanitizer: this.sanitizer,
-      source: 'JavaScript output is disabled in JupyterLab'
+      source: trans.__('JavaScript output is disabled in JupyterLab'),
+      translator: this.translator
     });
   }
 }

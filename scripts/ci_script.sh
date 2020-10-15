@@ -12,36 +12,64 @@ fi
 
 
 if [[ $GROUP == python ]]; then
+    jupyter lab build --debug
     # Run the python tests
-    py.test -v --junitxml=junit.xml
+    py.test
 fi
 
 
-if [[ $GROUP == js ]]; then
+if [[ $GROUP == js* ]]; then
 
-    jlpm build:packages
-    jlpm build:test
-    FORCE_COLOR=1 jlpm coverage --loglevel success
+    if [[ $GROUP == "js-testutils" ]]; then
+        pushd testutils
+    else
+        # extract the group name
+        export PKG="${GROUP#*-}"
+        pushd packages/${PKG}
+    fi
 
+    jlpm run build:test; true
+
+    export FORCE_COLOR=1
+    CMD="jlpm run test:cov"
+    $CMD || $CMD || $CMD
     jlpm run clean
 fi
 
 
 if [[ $GROUP == docs ]]; then
-
-    # Run the link check - allow for a link to fail once
-    py.test --check-links -k .md . || py.test --check-links -k .md --lf .
-
-    # Build the docs
-    jlpm build:packages
-    jlpm docs
-
-    # Verify tutorial docs build
+    # Build the tutorial docs
     pushd docs
-    pip install sphinx sphinx-copybutton sphinx_rtd_theme recommonmark jsx-lexer
-    make linkcheck
+    pip install -r ./requirements.txt
     make html
     popd
+
+    # Build the API docs
+    jlpm build:packages
+    jlpm docs
+fi
+
+if [[ $GROUP == linkcheck ]]; then
+    # Build the tutorial docs
+    pushd docs
+    pip install -r ./requirements.txt
+    make html
+    popd
+
+    # Run the link check on the built html files
+    CACHE_DIR="${HOME}/.cache/pytest-link-check"
+    mkdir -p ${CACHE_DIR}
+    echo "Existing cache:"
+    ls -ltr ${CACHE_DIR}
+    # Expire links after a week
+    LINKS_EXPIRE=604800
+    args="--check-links --check-links-cache --check-links-cache-expire-after ${LINKS_EXPIRE} --check-links-cache-name ${CACHE_DIR}/cache"
+    args="--ignore docs/build/html/genindex.html --ignore docs/build/html/search.html ${args}"
+    py.test $args --links-ext .html -k .html docs/build/html || py.test $args --links-ext .html -k .html --lf docs/build/html
+
+    # Run the link check on md files - allow for a link to fail once (--lf means only run last failed)
+    args="--check-links --check-links-cache --check-links-cache-expire-after ${LINKS_EXPIRE} --check-links-cache-name ${CACHE_DIR}/cache"
+    py.test $args --links-ext .md -k .md . || py.test $args --links-ext .md -k .md --lf .
 fi
 
 
@@ -52,23 +80,41 @@ if [[ $GROUP == integrity ]]; then
     # Check yarn.lock file
     jlpm check --integrity
 
+    # Run a browser check in dev mode
+    jlpm run build
+    python -m jupyterlab.browser_check --dev-mode
+fi
+
+
+if [[ $GROUP == lint ]]; then
     # Lint our files.
     jlpm run lint:check || (echo 'Please run `jlpm run lint` locally and push changes' && exit 1)
+fi
+
+
+if [[ $GROUP == integrity2 ]]; then
+    # Run the integrity script to link binary files
+    jlpm integrity
 
     # Build the packages individually.
     jlpm run build:src
 
+    # Make sure we can build for release
+    jlpm run build:dev:prod:release
+
+    # Make sure the storybooks build.
+    jlpm run build:storybook
+
     # Make sure we have CSS that can be converted with postcss
-    jlpm global add postcss-cli
+    jlpm global add postcss postcss-cli
 
     jlpm config set prefix ~/.yarn
     ~/.yarn/bin/postcss packages/**/style/*.css --dir /tmp
 
     # run twine check on the python build assets.
     # this must be done before altering any versions below.
-    python -m pip install -U twine wheel
-    python setup.py sdist
-    python setup.py bdist_wheel
+    python -m pip install -U twine wheel build
+    python -m build .
     twine check dist/*
 
     # Make sure we can bump the version
@@ -101,13 +147,22 @@ if [[ $GROUP == integrity ]]; then
 fi
 
 
-if [[ $GROUP == usage ]]; then
+if [[ $GROUP == examples ]]; then
+    # Run the integrity script to link binary files
+    jlpm integrity
+
     # Build the examples.
     jlpm run build:packages
     jlpm run build:examples
 
     # Test the examples
     jlpm run test:examples
+fi
+
+
+if [[ $GROUP == usage ]]; then
+    # Run the integrity script to link binary files
+    jlpm integrity
 
     # Test the cli apps.
     jupyter lab clean --debug
@@ -118,6 +173,7 @@ if [[ $GROUP == usage ]]; then
     jupyter labextension unlink extension --no-build --debug
     jupyter labextension link extension --no-build --debug
     jupyter labextension unlink  @jupyterlab/mock-extension --no-build --debug
+    # Test with a full install
     jupyter labextension install extension  --no-build --debug
     jupyter labextension list --debug
     jupyter labextension disable @jupyterlab/mock-extension --debug
@@ -125,7 +181,22 @@ if [[ $GROUP == usage ]]; then
     jupyter labextension disable @jupyterlab/notebook-extension --debug
     jupyter labextension uninstall @jupyterlab/mock-extension --no-build --debug
     jupyter labextension uninstall @jupyterlab/notebook-extension --no-build --debug
+    # Test with a dynamic install
+    jupyter labextension develop extension --debug
+    jupyter labextension build extension
+
+    python -m jupyterlab.browser_check
+    jupyter labextension list 1>labextensions 2>&1
+    cat labextensions | grep "@jupyterlab/mock-extension.*enabled.*OK"
+    jupyter labextension build extension --static-url /foo/
+    jupyter labextension disable @jupyterlab/mock-extension --debug
+    jupyter labextension enable @jupyterlab/mock-extension --debug
+    jupyter labextension uninstall @jupyterlab/mock-extension --debug
+    jupyter labextension list 1>labextensions 2>&1
+    # bail if mock-extension was listed
+    cat labextensions | grep -q "mock-extension" && exit 1
     popd
+
     jupyter lab workspaces export > workspace.json --debug
     jupyter lab workspaces import --name newspace workspace.json --debug
     jupyter lab workspaces export newspace > newspace.json --debug
@@ -144,6 +215,9 @@ if [[ $GROUP == usage ]]; then
     jupyter labextension enable -h
     jupyter labextension disable -h
 
+    # Make sure we can run JupyterLab under classic notebook
+    python -m jupyterlab.browser_check --notebook
+
     # Make sure we can add and remove a sibling package.
     # jlpm run add:sibling jupyterlab/tests/mock_packages/extension
     # jlpm run build
@@ -158,6 +232,10 @@ if [[ $GROUP == usage ]]; then
     jlpm run get:dependency @jupyterlab/buildutils
     jlpm run get:dependency typescript
     jlpm run get:dependency react-native
+
+    # Use the extension upgrade script
+    pip install cookiecutter
+    python -m jupyterlab.upgrade_extension --no-input jupyterlab/tests/mock_packages/extension
 
     # Test theme creation - make sure we can add it as a package, build,
     # and run browser
@@ -193,15 +271,41 @@ if [[ $GROUP == usage ]]; then
     python -m jupyterlab.browser_check
     jupyter labextension list --debug
 
+    # Make sure we can run watch mode with no built application
+    jupyter lab clean
+    python -m jupyterlab.browser_check --watch
+
     # Make sure we can non-dev install.
     virtualenv -p $(which python3) test_install
     ./test_install/bin/pip install -q ".[test]"  # this populates <sys_prefix>/share/jupyter/lab
+
+    ./test_install/bin/jupyter server extension list 1>serverextensions 2>&1
+    cat serverextensions
+    cat serverextensions | grep -i "jupyterlab.*enabled"
+    cat serverextensions | grep -i "jupyterlab.*OK"
+
+    # TODO: remove when we no longer support classic notebook
+    ./test_install/bin/jupyter serverextension list 1>serverextensions 2>&1
+    cat serverextensions
+    cat serverextensions | grep -i "jupyterlab.*enabled"
+    cat serverextensions | grep -i "jupyterlab.*OK"
+
     ./test_install/bin/python -m jupyterlab.browser_check
     # Make sure we can run the build
     ./test_install/bin/jupyter lab build
 
     # Make sure we can start and kill the lab server
     ./test_install/bin/jupyter lab --no-browser &
+    TASK_PID=$!
+    # Make sure the task is running
+    ps -p $TASK_PID || exit 1
+    sleep 5
+    kill $TASK_PID
+    wait $TASK_PID
+
+    # Check the labhubapp
+    ./test_install/bin/pip install jupyterhub
+    ./test_install/bin/jupyter-labhub --no-browser &
     TASK_PID=$!
     # Make sure the task is running
     ps -p $TASK_PID || exit 1
@@ -232,4 +336,9 @@ if [[ $GROUP == nonode ]]; then
     sleep 5
     kill $TASK_PID
     wait $TASK_PID
+
+    # Make sure we can install the tarball
+    virtualenv -p $(which python3) test_sdist
+    ./test_sdist/bin/pip install dist/*.tar.gz
+    ./test_sdist/bin/python -m jupyterlab.browser_check --no-chrome-test
 fi

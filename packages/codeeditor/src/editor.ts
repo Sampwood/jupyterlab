@@ -17,6 +17,7 @@ import {
   IObservableMap,
   IObservableString
 } from '@jupyterlab/observables';
+import { ITranslator } from '@jupyterlab/translation';
 
 /**
  * A namespace for code editors.
@@ -216,10 +217,10 @@ export namespace CodeEditor {
         this.modelDB = new ModelDB();
       }
 
-      let value = this.modelDB.createString('value');
+      const value = this.modelDB.createString('value');
       value.text = value.text || options.value || '';
 
-      let mimeType = this.modelDB.createValue('mimeType');
+      const mimeType = this.modelDB.createValue('mimeType');
       mimeType.set(options.mimeType || 'text/plain');
       mimeType.changed.connect(this._onMimeTypeChanged, this);
 
@@ -566,6 +567,11 @@ export namespace CodeEditor {
      * Gets the list of tokens for the editor model.
      */
     getTokens(): IToken[];
+
+    /**
+     * Replaces selection with the given text.
+     */
+    replaceSelection?(text: string): void;
   }
 
   /**
@@ -632,6 +638,11 @@ export namespace CodeEditor {
     autoClosingBrackets: boolean;
 
     /**
+     * Whether the editor should handle paste events.
+     */
+    handlePaste?: boolean;
+
+    /**
      * The column where to break text line.
      */
     wordWrapColumn: number;
@@ -650,7 +661,7 @@ export namespace CodeEditor {
   /**
    * The default configuration options for an editor.
    */
-  export let defaultConfig: IConfig = {
+  export const defaultConfig: IConfig = {
     fontFamily: null,
     fontSize: null,
     lineHeight: null,
@@ -662,6 +673,7 @@ export namespace CodeEditor {
     insertSpaces: true,
     matchBrackets: true,
     autoClosingBrackets: true,
+    handlePaste: true,
     rulers: [],
     codeFolding: false
   };
@@ -694,6 +706,11 @@ export namespace CodeEditor {
      * The configuration options for the editor.
      */
     config?: Partial<IConfig>;
+
+    /**
+     * The configuration options for the editor.
+     */
+    translator?: ITranslator;
   }
 
   export namespace Model {

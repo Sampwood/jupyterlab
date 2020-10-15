@@ -9,6 +9,8 @@ import { IRenderMime } from '@jupyterlab/rendermime-interfaces';
 
 import { Token } from '@lumino/coreutils';
 
+import { Throttler } from '@lumino/polling';
+
 import { JupyterFrontEnd, JupyterFrontEndPlugin } from './frontend';
 
 import { createRendermimePlugins } from './mimerenderers';
@@ -79,10 +81,22 @@ export class JupyterLab extends JupyterFrontEnd<ILabShell> {
     this.docRegistry.addModelFactory(new Base64ModelFactory());
 
     if (options.mimeExtensions) {
-      for (let plugin of createRendermimePlugins(options.mimeExtensions)) {
+      for (const plugin of createRendermimePlugins(options.mimeExtensions)) {
         this.registerPlugin(plugin);
       }
     }
+
+    void this.restored.then(() => {
+      this.formatChanged.connect((_, format) => {
+        if (format === 'mobile') {
+          this.shell.mode = 'single-document';
+          this.shell.collapseLeft();
+          this.shell.collapseRight();
+          return;
+        }
+      }, this);
+      Private.setFormat(this);
+    });
   }
 
   /**
@@ -131,6 +145,18 @@ export class JupyterLab extends JupyterFrontEnd<ILabShell> {
   }
 
   /**
+   * Handle the DOM events for the application.
+   *
+   * @param event - The DOM event sent to the application.
+   */
+  handleEvent(event: Event): void {
+    super.handleEvent(event);
+    if (event.type === 'resize') {
+      void this._formatter.invoke();
+    }
+  }
+
+  /**
    * Register plugins from a plugin module.
    *
    * @param mod - The plugin module to register.
@@ -164,6 +190,9 @@ export class JupyterLab extends JupyterFrontEnd<ILabShell> {
     });
   }
 
+  private _formatter = new Throttler(() => {
+    Private.setFormat(this);
+  }, 250);
   private _info: JupyterLab.IInfo;
   private _paths: JupyterFrontEnd.IPaths;
 }
@@ -181,12 +210,10 @@ export namespace JupyterLab {
     paths?: Partial<JupyterFrontEnd.IPaths>;
   }
 
-  /* tslint:disable */
   /**
    * The layout restorer token.
    */
   export const IInfo = new Token<IInfo>('@jupyterlab/application:IInfo');
-  /* tslint:enable */
 
   /**
    * The information about a JupyterLab application.
@@ -237,11 +264,11 @@ export namespace JupyterLab {
       base: PageConfig.getOption('baseUrl'),
       notFound: PageConfig.getOption('notFoundUrl'),
       app: PageConfig.getOption('appUrl'),
+      doc: PageConfig.getOption('docUrl'),
       static: PageConfig.getOption('staticUrl'),
       settings: PageConfig.getOption('settingsUrl'),
       themes: PageConfig.getOption('themesUrl'),
-      tree: PageConfig.getOption('treeUrl'),
-      workspaces: PageConfig.getOption('workspacesUrl'),
+      translations: PageConfig.getOption('translationsApiUrl'),
       hubHost: PageConfig.getOption('hubHost') || undefined,
       hubPrefix: PageConfig.getOption('hubPrefix') || undefined,
       hubUser: PageConfig.getOption('hubUser') || undefined,
@@ -267,6 +294,27 @@ export namespace JupyterLab {
     /**
      * The default export.
      */
-    default: JupyterFrontEndPlugin<any> | JupyterFrontEndPlugin<any>[];
+    default:
+      | JupyterFrontEndPlugin<any, any, any>
+      | JupyterFrontEndPlugin<any, any, any>[];
+  }
+}
+
+/**
+ * A namespace for module-private functionality.
+ */
+namespace Private {
+  /**
+   * Media query for mobile devices.
+   */
+  const MOBILE_QUERY = 'only screen and (max-width: 760px)';
+
+  /**
+   * Sets the `format` of a Jupyter front-end application.
+   *
+   * @param app The front-end application whose format is set.
+   */
+  export function setFormat(app: JupyterLab): void {
+    app.format = window.matchMedia(MOBILE_QUERY).matches ? 'mobile' : 'desktop';
   }
 }

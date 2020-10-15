@@ -19,7 +19,8 @@ import {
   editorServices,
   EditorSyntaxStatus,
   CodeMirrorEditor,
-  Mode
+  Mode,
+  ICodeMirror
 } from '@jupyterlab/codemirror';
 
 import { IDocumentWidget } from '@jupyterlab/docregistry';
@@ -29,6 +30,8 @@ import { IEditorTracker, FileEditor } from '@jupyterlab/fileeditor';
 import { ISettingRegistry } from '@jupyterlab/settingregistry';
 
 import { IStatusBar } from '@jupyterlab/statusbar';
+
+import { ITranslator } from '@jupyterlab/translation';
 
 /**
  * The command IDs used by the codemirror plugin.
@@ -45,6 +48,13 @@ namespace CommandIDs {
   export const goToLine = 'codemirror:go-to-line';
 }
 
+/** The CodeMirror singleton. */
+const codemirrorSingleton: JupyterFrontEndPlugin<ICodeMirror> = {
+  id: '@jupyterlab/codemirror-extension:codemirror',
+  provides: ICodeMirror,
+  activate: activateCodeMirror
+};
+
 /**
  * The editor services.
  */
@@ -59,7 +69,7 @@ const services: JupyterFrontEndPlugin<IEditorServices> = {
  */
 const commands: JupyterFrontEndPlugin<void> = {
   id: '@jupyterlab/codemirror-extension:commands',
-  requires: [IEditorTracker, ISettingRegistry],
+  requires: [IEditorTracker, ISettingRegistry, ITranslator],
   optional: [IMainMenu],
   activate: activateEditorCommands,
   autoStart: true
@@ -71,19 +81,20 @@ const commands: JupyterFrontEndPlugin<void> = {
 export const editorSyntaxStatus: JupyterFrontEndPlugin<void> = {
   id: '@jupyterlab/codemirror-extension:editor-syntax-status',
   autoStart: true,
-  requires: [IEditorTracker, ILabShell],
+  requires: [IEditorTracker, ILabShell, ITranslator],
   optional: [IStatusBar],
   activate: (
     app: JupyterFrontEnd,
     tracker: IEditorTracker,
     labShell: ILabShell,
+    translator: ITranslator,
     statusBar: IStatusBar | null
   ) => {
     if (!statusBar) {
       // Automatically disable if statusbar missing
       return;
     }
-    let item = new EditorSyntaxStatus({ commands: app.commands });
+    const item = new EditorSyntaxStatus({ commands: app.commands, translator });
     labShell.currentChanged.connect(() => {
       const current = labShell.currentWidget;
       if (current && tracker.has(current) && item.model) {
@@ -113,7 +124,8 @@ export const editorSyntaxStatus: JupyterFrontEndPlugin<void> = {
 const plugins: JupyterFrontEndPlugin<any>[] = [
   commands,
   services,
-  editorSyntaxStatus
+  editorSyntaxStatus,
+  codemirrorSingleton
 ];
 export default plugins;
 
@@ -133,14 +145,32 @@ function activateEditorServices(app: JupyterFrontEnd): IEditorServices {
 }
 
 /**
+ * Simplest implementation of the CodeMirror singleton provider.
+ */
+class CodeMirrorSingleton implements ICodeMirror {
+  get CodeMirror() {
+    return CodeMirror;
+  }
+}
+
+/**
+ * Set up the CodeMirror singleton.
+ */
+function activateCodeMirror(app: JupyterFrontEnd): ICodeMirror {
+  return new CodeMirrorSingleton();
+}
+
+/**
  * Set up the editor widget menu and commands.
  */
 function activateEditorCommands(
   app: JupyterFrontEnd,
   tracker: IEditorTracker,
   settingRegistry: ISettingRegistry,
+  translator: ITranslator,
   mainMenu: IMainMenu | null
 ): void {
+  const trans = translator.load('jupyterlab');
   const { commands, restored } = app;
   let {
     theme,
@@ -162,11 +192,22 @@ function activateEditorCommands(
 
     // Lazy loading of vim mode
     if (keyMap === 'vim') {
-      // @ts-ignore
+      // @ts-expect-error
       await import('codemirror/keymap/vim.js');
     }
 
     theme = (settings.get('theme').composite as string | null) || theme;
+
+    // Lazy loading of theme stylesheets
+    if (theme !== 'jupyter' && theme !== 'default') {
+      const filename =
+        theme === 'solarized light' || theme === 'solarized dark'
+          ? 'solarized'
+          : theme;
+
+      await import(`codemirror/theme/${filename}.css`);
+    }
+
     scrollPastEnd =
       (settings.get('scrollPastEnd').composite as boolean | null) ??
       scrollPastEnd;
@@ -190,14 +231,14 @@ function activateEditorCommands(
   function updateTracker(): void {
     tracker.forEach(widget => {
       if (widget.content.editor instanceof CodeMirrorEditor) {
-        let cm = widget.content.editor.editor;
-        cm.setOption('keyMap', keyMap);
-        cm.setOption('theme', theme);
-        cm.setOption('scrollPastEnd', scrollPastEnd);
-        cm.setOption('styleActiveLine', styleActiveLine);
-        cm.setOption('styleSelectedText', styleSelectedText);
-        cm.setOption('selectionPointer', selectionPointer);
-        cm.setOption('lineWiseCopyCut', lineWiseCopyCut);
+        const { editor } = widget.content;
+        editor.setOption('keyMap', keyMap);
+        editor.setOption('lineWiseCopyCut', lineWiseCopyCut);
+        editor.setOption('scrollPastEnd', scrollPastEnd);
+        editor.setOption('selectionPointer', selectionPointer);
+        editor.setOption('styleActiveLine', styleActiveLine);
+        editor.setOption('styleSelectedText', styleSelectedText);
+        editor.setOption('theme', theme);
       }
     });
   }
@@ -222,14 +263,14 @@ function activateEditorCommands(
    */
   tracker.widgetAdded.connect((sender, widget) => {
     if (widget.content.editor instanceof CodeMirrorEditor) {
-      let cm = widget.content.editor.editor;
-      cm.setOption('keyMap', keyMap);
-      cm.setOption('theme', theme);
-      cm.setOption('scrollPastEnd', scrollPastEnd);
-      cm.setOption('styleActiveLine', styleActiveLine);
-      cm.setOption('styleSelectedText', styleSelectedText);
-      cm.setOption('selectionPointer', selectionPointer);
-      cm.setOption('lineWiseCopyCut', lineWiseCopyCut);
+      const { editor } = widget.content;
+      editor.setOption('keyMap', keyMap);
+      editor.setOption('lineWiseCopyCut', lineWiseCopyCut);
+      editor.setOption('selectionPointer', selectionPointer);
+      editor.setOption('scrollPastEnd', scrollPastEnd);
+      editor.setOption('styleActiveLine', styleActiveLine);
+      editor.setOption('styleSelectedText', styleSelectedText);
+      editor.setOption('theme', theme);
     }
   });
 
@@ -250,16 +291,16 @@ function activateEditorCommands(
   const keyMapMenu = new Menu({ commands });
   const modeMenu = new Menu({ commands });
 
-  themeMenu.title.label = 'Text Editor Theme';
-  keyMapMenu.title.label = 'Text Editor Key Map';
-  modeMenu.title.label = 'Text Editor Syntax Highlighting';
+  themeMenu.title.label = trans.__('Text Editor Theme');
+  keyMapMenu.title.label = trans.__('Text Editor Key Map');
+  modeMenu.title.label = trans.__('Text Editor Syntax Highlighting');
 
   commands.addCommand(CommandIDs.changeTheme, {
     label: args => {
       if (args['theme'] === 'default') {
-        return 'codemirror';
+        return trans.__('codemirror');
       } else {
-        return args['theme'] as string;
+        return args['displayName'] as string;
       }
     },
     execute: args => {
@@ -275,8 +316,9 @@ function activateEditorCommands(
 
   commands.addCommand(CommandIDs.changeKeyMap, {
     label: args => {
-      let title = args['keyMap'] as string;
-      return title === 'sublime' ? 'Sublime Text' : title;
+      const title = args['displayName'] as string;
+      const keyMap = args['keyMap'] as string;
+      return keyMap === 'sublime' ? trans.__('Sublime Text') : title;
     },
     execute: args => {
       const key = 'keyMap';
@@ -290,26 +332,26 @@ function activateEditorCommands(
   });
 
   commands.addCommand(CommandIDs.find, {
-    label: 'Find...',
+    label: trans.__('Find...'),
     execute: () => {
-      let widget = tracker.currentWidget;
+      const widget = tracker.currentWidget;
       if (!widget) {
         return;
       }
-      let editor = widget.content.editor as CodeMirrorEditor;
+      const editor = widget.content.editor as CodeMirrorEditor;
       editor.execCommand('find');
     },
     isEnabled
   });
 
   commands.addCommand(CommandIDs.goToLine, {
-    label: 'Go to Line...',
+    label: trans.__('Go to Line...'),
     execute: () => {
-      let widget = tracker.currentWidget;
+      const widget = tracker.currentWidget;
       if (!widget) {
         return;
       }
-      let editor = widget.content.editor as CodeMirrorEditor;
+      const editor = widget.content.editor as CodeMirrorEditor;
       editor.execCommand('jumpToLine');
     },
     isEnabled
@@ -318,10 +360,10 @@ function activateEditorCommands(
   commands.addCommand(CommandIDs.changeMode, {
     label: args => args['name'] as string,
     execute: args => {
-      let name = args['name'] as string;
-      let widget = tracker.currentWidget;
+      const name = args['name'] as string;
+      const widget = tracker.currentWidget;
       if (name && widget) {
-        let spec = Mode.findByName(name);
+        const spec = Mode.findByName(name);
         if (spec) {
           widget.content.model.mimeType = spec.mime;
         }
@@ -329,21 +371,21 @@ function activateEditorCommands(
     },
     isEnabled,
     isToggled: args => {
-      let widget = tracker.currentWidget;
+      const widget = tracker.currentWidget;
       if (!widget) {
         return false;
       }
-      let mime = widget.content.model.mimeType;
-      let spec = Mode.findByMIME(mime);
-      let name = spec && spec.name;
+      const mime = widget.content.model.mimeType;
+      const spec = Mode.findByMIME(mime);
+      const name = spec && spec.name;
       return args['name'] === name;
     }
   });
 
   Mode.getModeInfo()
     .sort((a, b) => {
-      let aName = a.name || '';
-      let bName = b.name || '';
+      const aName = a.name || '';
+      const bName = b.name || '';
       return aName.localeCompare(bName);
     })
     .forEach(spec => {
@@ -357,33 +399,40 @@ function activateEditorCommands(
       });
     });
 
+  // FIXME-TRANS: Check this is working as expected
   [
-    'jupyter',
-    'default',
-    'abcdef',
-    'base16-dark',
-    'base16-light',
-    'hopscotch',
-    'material',
-    'mbo',
-    'mdn-like',
-    'seti',
-    'solarized dark',
-    'solarized light',
-    'the-matrix',
-    'xq-light',
-    'zenburn'
-  ].forEach(name =>
+    ['jupyter', trans.__('jupyter')],
+    ['default', trans.__('default')],
+    ['abcdef', trans.__('abcdef')],
+    ['base16-dark', trans.__('base16-dark')],
+    ['base16-light', trans.__('base16-light')],
+    ['hopscotch', trans.__('hopscotch')],
+    ['material', trans.__('material')],
+    ['mbo', trans.__('mbo')],
+    ['mdn-like', trans.__('mdn-like')],
+    ['seti', trans.__('seti')],
+    ['solarized dark', trans.__('solarized dark')],
+    ['solarized light', trans.__('solarized light')],
+    ['the-matrix', trans.__('the-matrix')],
+    ['xq-light', trans.__('xq-light')],
+    ['zenburn', trans.__('zenburn')]
+  ].forEach(([name, displayName]) =>
     themeMenu.addItem({
       command: CommandIDs.changeTheme,
-      args: { theme: name }
+      args: { theme: name, displayName: displayName }
     })
   );
 
-  ['default', 'sublime', 'vim', 'emacs'].forEach(name => {
+  // FIXME-TRANS: Check this is working as expected
+  [
+    ['default', trans.__('default')],
+    ['sublime', trans.__('sublime')],
+    ['vim', trans.__('vim')],
+    ['emacs', trans.__('emacs')]
+  ].forEach(([name, displayName]) => {
     keyMapMenu.addItem({
       command: CommandIDs.changeKeyMap,
-      args: { keyMap: name }
+      args: { keyMap: name, displayName: displayName }
     });
   });
 
@@ -404,7 +453,7 @@ function activateEditorCommands(
     mainMenu.editMenu.goToLiners.add({
       tracker,
       goToLine: (widget: IDocumentWidget<FileEditor>) => {
-        let editor = widget.content.editor as CodeMirrorEditor;
+        const editor = widget.content.editor as CodeMirrorEditor;
         editor.execCommand('jumpToLine');
       }
     } as IEditMenu.IGoToLiner<IDocumentWidget<FileEditor>>);

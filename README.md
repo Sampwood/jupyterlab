@@ -9,8 +9,10 @@
 
 [![PyPI version](https://badge.fury.io/py/jupyterlab.svg)](https://badge.fury.io/py/jupyterlab)
 [![Downloads](https://pepy.tech/badge/jupyterlab/month)](https://pepy.tech/project/jupyterlab/month)
-[![Build Status](https://dev.azure.com/jupyterlab/jupyterlab/_apis/build/status/jupyterlab.jupyterlab?branchName=master)](https://dev.azure.com/jupyterlab/jupyterlab/_build/latest?definitionId=1&branchName=master)
+[![Build Status](https://github.com/jupyterlab/jupyterlab/workflows/Linux%20Tests/badge.svg)](https://github.com/jupyterlab/jupyterlab/actions?query=workflow%3A%22Linux+Tests%22)
+[![Build Status](https://github.com/jupyterlab/jupyterlab/workflows/Windows%20Tests/badge.svg)](https://github.com/jupyterlab/jupyterlab/actions?query=workflow%3A%22Windows+Tests%22)
 [![Documentation Status](https://readthedocs.org/projects/jupyterlab/badge/?version=stable)](http://jupyterlab.readthedocs.io/en/stable/)
+[![Crowdin](https://badges.crowdin.net/jupyterlab/localized.svg)](https://crowdin.com/project/jupyterlab)
 [![GitHub](https://img.shields.io/badge/issue_tracking-github-blue.svg)](https://github.com/jupyterlab/jupyterlab/issues)
 [![Discourse](https://img.shields.io/badge/help_forum-discourse-blue.svg)](https://discourse.jupyter.org/c/jupyterlab)
 [![Gitter](https://img.shields.io/badge/social_chat-gitter-blue.svg)](https://gitter.im/jupyterlab/jupyterlab)
@@ -61,7 +63,7 @@ If you use `pip`, you can install it with:
 pip install jupyterlab
 ```
 
-If installing using `pip install --user`, you must add the user-level `bin` directory to your `PATH` environment variable in order to launch `jupyter lab`.
+If installing using `pip install --user`, you must add the user-level `bin` directory to your `PATH` environment variable in order to launch `jupyter lab`. If you are using a Unix derivative (FreeBSD, GNU / Linux, OS X), you can achieve this by using `export PATH="$HOME/.local/bin:$PATH"` command.
 
 #### Installing with Previous Versions of Jupyter Notebook
 
@@ -82,6 +84,8 @@ jupyter lab
 
 JupyterLab will open automatically in the browser. See the [documentation](http://jupyterlab.readthedocs.io/en/stable/getting_started/starting.html) for additional details.
 
+If you encounter an error like "Command 'jupyter' not found", please make sure `PATH` environment variable is set correctly. Alternatively, you can start up JupyterLab using `~/.local/bin/jupyter lab` without changing the `PATH` environment variable.
+
 ### Prerequisites and Supported Browsers
 
 Jupyter notebook version 4.3 or later is required. To check the notebook version, run the command:
@@ -100,11 +104,25 @@ See our [documentation](http://jupyterlab.readthedocs.io/en/latest/getting_start
 
 ---
 
+## Getting help
+
+We encourage you to ask questions on the [Discourse forum](https://discourse.jupyter.org/c/jupyterlab). A question answered there can become a useful resource for others.
+
+### Bug report
+
+To report a bug please read the [guidelines](https://jupyterlab.readthedocs.io/en/latest/getting_started/issue.html) and then open a [Github issue](https://github.com/jupyterlab/jupyterlab/issues/new?template=bug_report.md). To keep resolved issues self-contained, the [lock bot](https://github.com/apps/lock) will lock closed issues as resolved after a period of inactivity. If related discussion is still needed after an issue is locked, please open a new issue and reference the old issue.
+
+### Feature request
+
+We also welcome suggestions for new features as they help make the project more useful for everyone. To request a feature please use the [feature request template](https://github.com/jupyterlab/jupyterlab/issues/new?template=feature_request.md).
+
+---
+
 ## Development
 
 ### Contributing
 
-To contribute to the project, please read the [contributor documentation](CONTRIBUTING.md).
+To contribute code or documentation to the project, please read the [contributor documentation](https://jupyterlab.readthedocs.io/en/latest/developer/contributing.html).
 
 JupyterLab follows the Jupyter [Community Guides](https://jupyter.readthedocs.io/en/latest/community/content-community.html).
 
@@ -123,6 +141,8 @@ JupyterLab is part of [Project Jupyter](http://jupyter.org/) and is developed by
 
 JupyterLab's current maintainers are listed in alphabetical order, with affiliation, and main areas of contribution:
 
+- Mehmet Bektas, Bloomberg (general development, extensions).
+- Eric Charles, Datalayer, (general development, extensions).
 - Afshin Darian, Two Sigma (co-creator, application/high-level architecture,
   prolific contributions throughout the code base).
 - Vidar T. Fauske, JPMorgan Chase (general development, extensions).
@@ -133,27 +153,22 @@ JupyterLab's current maintainers are listed in alphabetical order, with affiliat
 - Max Klein, JPMorgan Chase (UI Package, build system, general development, extensions).
 - Fernando Perez, UC Berkeley (co-creator, vision).
 - Ian Rose, Quansight/City of LA (general core development, extensions).
+- Andrew Schlaepfer, Bloomberg (general development, extensions).
 - Saul Shanabrook, Quansight (general development, extensions)
-- Steven Silvester, AWS (co-creator, release management, packaging,
+- Steven Silvester, Apple (co-creator, release management, packaging,
   prolific contributions throughout the code base).
 
 Maintainer emeritus:
 
 - Chris Colbert, Project Jupyter (co-creator, application/low-level architecture,
   technical leadership, vision, PhosphorJS)
-- Cameron Oelsen, Cal Poly (UI/UX design).
 - Jessica Forde, Project Jupyter (demo, documentation)
+- Cameron Oelsen, Cal Poly (UI/UX design).
 
 This list is provided to give the reader context on who we are and how our team functions.
 To be listed, please submit a pull request with your information.
 
 ---
-
-## Getting help
-
-We encourage you to ask questions on the [Discourse forum](https://discourse.jupyter.org/c/jupyterlab). A question answered there can become a useful resource for others.
-
-Please use the [GitHub issues page](https://github.com/jupyterlab/jupyterlab/issues) to provide feedback or submit a bug report. To keep resolved issues self-contained, the [lock bot](https://github.com/apps/lock) will lock closed issues as resolved after a period of inactivity. If related discussion is still needed after an issue is locked, please open a new issue and reference the old issue.
 
 ### Weekly Dev Meeting
 
@@ -162,5 +177,5 @@ We have videoconference meetings every week where we discuss what we have been w
 Anyone is welcome to attend, if they would like to discuss a topic or just to listen in.
 
 - When: Wednesdays [9AM Pacific Time](https://www.thetimezoneconverter.com/?t=9%3A00%20am&tz=San%20Francisco&)
-- Where: [`calpoly/jupyter` Zoom](https://calpoly.zoom.us/my/jupyter)
-- What: [Meeting notes](https://hackmd.io/Uscrk0N1RhCtX-p6ZHUuWQ?both)
+- Where: [`jovyan` Zoom](https://zoom.us/my/jovyan?pwd=c0JZTHlNdS9Sek9vdzR3aTJ4SzFTQT09)
+- What: [Meeting notes](https://hackmd.io/Y7fBMQPSQ1C08SDGI-fwtg?both)

@@ -13,6 +13,8 @@ export * from './factory';
 export * from './mimetype';
 export * from './syntaxstatus';
 
+export * from './tokens';
+
 /**
  * The default editor services.
  */
@@ -20,3 +22,15 @@ export const editorServices: IEditorServices = {
   factoryService: new CodeMirrorEditorFactory(),
   mimeTypeService: new CodeMirrorMimeTypeService()
 };
+
+/**
+ * FIXME-TRANS: Maybe an option to be able to pass a translator to the factories?
+ *
+
+export function getEditorServices(translator: ITranslator): IEditorServices {
+  return {
+    factoryService: new CodeMirrorEditorFactory({}, translator),
+    mimeTypeService: new CodeMirrorMimeTypeService(translator)
+  };
+}
+ */

@@ -41,6 +41,8 @@ import { IRenderMimeRegistry } from '@jupyterlab/rendermime';
 
 import { ISettingRegistry } from '@jupyterlab/settingregistry';
 
+import { ITranslator } from '@jupyterlab/translation';
+
 import { consoleIcon } from '@jupyterlab/ui-components';
 
 import { find } from '@lumino/algorithm';
@@ -90,6 +92,8 @@ namespace CommandIDs {
   export const shiftEnterToExecute = 'console:shift-enter-to-execute';
 
   export const interactionMode = 'console:interaction-mode';
+
+  export const replaceSelection = 'console:replace-selection';
 }
 
 /**
@@ -104,7 +108,8 @@ const tracker: JupyterFrontEndPlugin<IConsoleTracker> = {
     ILayoutRestorer,
     IFileBrowserFactory,
     IRenderMimeRegistry,
-    ISettingRegistry
+    ISettingRegistry,
+    ITranslator
   ],
   optional: [
     IMainMenu,
@@ -148,15 +153,17 @@ async function activateConsole(
   browserFactory: IFileBrowserFactory,
   rendermime: IRenderMimeRegistry,
   settingRegistry: ISettingRegistry,
+  translator: ITranslator,
   mainMenu: IMainMenu | null,
   palette: ICommandPalette | null,
   launcher: ILauncher | null,
   status: ILabStatus | null,
   sessionDialogs: ISessionContextDialogs | null
 ): Promise<IConsoleTracker> {
+  const trans = translator.load('jupyterlab');
   const manager = app.serviceManager;
   const { commands, shell } = app;
-  const category = 'Console';
+  const category = trans.__('Console');
   sessionDialogs = sessionDialogs ?? sessionContextDialogs;
 
   // Create a widget tracker for all console panels.
@@ -193,20 +200,20 @@ async function activateConsole(
           return;
         }
         disposables = new DisposableSet();
-        let baseUrl = PageConfig.getBaseUrl();
-        for (let name in specs.kernelspecs) {
-          let rank = name === specs.default ? 0 : Infinity;
+        const baseUrl = PageConfig.getBaseUrl();
+        for (const name in specs.kernelspecs) {
+          const rank = name === specs.default ? 0 : Infinity;
           const spec = specs.kernelspecs[name]!;
           let kernelIconUrl = spec.resources['logo-64x64'];
           if (kernelIconUrl) {
-            let index = kernelIconUrl.indexOf('kernelspecs');
+            const index = kernelIconUrl.indexOf('kernelspecs');
             kernelIconUrl = URLExt.join(baseUrl, kernelIconUrl.slice(index));
           }
           disposables.add(
             launcher.add({
               command: CommandIDs.create,
               args: { isLauncher: true, kernelPreference: { name } },
-              category: 'Console',
+              category: trans.__('Console'),
               rank,
               kernelIconUrl,
               metadata: {
@@ -259,6 +266,7 @@ async function activateConsole(
       contentFactory,
       mimeTypeService: editorServices.mimeTypeService,
       rendermime,
+      translator,
       setBusy: (status && (() => status.setBusy())) ?? undefined,
       ...(options as Partial<ConsolePanel.IOptions>)
     });
@@ -325,8 +333,8 @@ async function activateConsole(
   let command = CommandIDs.open;
   commands.addCommand(command, {
     execute: (args: IOpenOptions) => {
-      let path = args['path'];
-      let widget = tracker.find(value => {
+      const path = args['path'];
+      const widget = tracker.find(value => {
         return value.console.sessionContext.session?.path === path;
       });
       if (widget) {
@@ -336,7 +344,7 @@ async function activateConsole(
         return widget;
       } else {
         return manager.ready.then(() => {
-          let model = find(manager.sessions.running(), item => {
+          const model = find(manager.sessions.running(), item => {
             return item.path === path;
           });
           if (model) {
@@ -352,7 +360,7 @@ async function activateConsole(
   commands.addCommand(command, {
     label: args => {
       if (args['isPalette']) {
-        return 'New Console';
+        return trans.__('New Console');
       } else if (args['isLauncher'] && args['kernelPreference']) {
         const kernelPreference = args[
           'kernelPreference'
@@ -363,11 +371,11 @@ async function activateConsole(
             ?.display_name ?? ''
         );
       }
-      return 'Console';
+      return trans.__('Console');
     },
     icon: args => (args['isPalette'] ? undefined : consoleIcon),
     execute: args => {
-      let basePath =
+      const basePath =
         (args['basePath'] as string) ||
         (args['cwd'] as string) ||
         browserFactory.defaultBrowser.model.path;
@@ -377,8 +385,8 @@ async function activateConsole(
 
   // Get the current widget and activate unless the args specify otherwise.
   function getCurrent(args: ReadonlyPartialJSONObject): ConsolePanel | null {
-    let widget = tracker.currentWidget;
-    let activate = args['activate'] !== false;
+    const widget = tracker.currentWidget;
+    const activate = args['activate'] !== false;
     if (activate && widget) {
       shell.activateById(widget.id);
     }
@@ -386,9 +394,9 @@ async function activateConsole(
   }
 
   commands.addCommand(CommandIDs.clear, {
-    label: 'Clear Console Cells',
+    label: trans.__('Clear Console Cells'),
     execute: args => {
-      let current = getCurrent(args);
+      const current = getCurrent(args);
       if (!current) {
         return;
       }
@@ -398,9 +406,9 @@ async function activateConsole(
   });
 
   commands.addCommand(CommandIDs.runUnforced, {
-    label: 'Run Cell (unforced)',
+    label: trans.__('Run Cell (unforced)'),
     execute: args => {
-      let current = getCurrent(args);
+      const current = getCurrent(args);
       if (!current) {
         return;
       }
@@ -410,9 +418,9 @@ async function activateConsole(
   });
 
   commands.addCommand(CommandIDs.runForced, {
-    label: 'Run Cell (forced)',
+    label: trans.__('Run Cell (forced)'),
     execute: args => {
-      let current = getCurrent(args);
+      const current = getCurrent(args);
       if (!current) {
         return;
       }
@@ -422,9 +430,9 @@ async function activateConsole(
   });
 
   commands.addCommand(CommandIDs.linebreak, {
-    label: 'Insert Line Break',
+    label: trans.__('Insert Line Break'),
     execute: args => {
-      let current = getCurrent(args);
+      const current = getCurrent(args);
       if (!current) {
         return;
       }
@@ -433,14 +441,27 @@ async function activateConsole(
     isEnabled
   });
 
-  commands.addCommand(CommandIDs.interrupt, {
-    label: 'Interrupt Kernel',
+  commands.addCommand(CommandIDs.replaceSelection, {
+    label: trans.__('Replace Selection in Console'),
     execute: args => {
-      let current = getCurrent(args);
+      const current = getCurrent(args);
       if (!current) {
         return;
       }
-      let kernel = current.console.sessionContext.session?.kernel;
+      const text: string = (args['text'] as string) || '';
+      current.console.replaceSelection(text);
+    },
+    isEnabled
+  });
+
+  commands.addCommand(CommandIDs.interrupt, {
+    label: trans.__('Interrupt Kernel'),
+    execute: args => {
+      const current = getCurrent(args);
+      if (!current) {
+        return;
+      }
+      const kernel = current.console.sessionContext.session?.kernel;
       if (kernel) {
         return kernel.interrupt();
       }
@@ -449,27 +470,33 @@ async function activateConsole(
   });
 
   commands.addCommand(CommandIDs.restart, {
-    label: 'Restart Kernel…',
+    label: trans.__('Restart Kernel…'),
     execute: args => {
-      let current = getCurrent(args);
+      const current = getCurrent(args);
       if (!current) {
         return;
       }
-      return sessionDialogs!.restart(current.console.sessionContext);
+      return sessionDialogs!.restart(
+        current.console.sessionContext,
+        translator
+      );
     },
     isEnabled
   });
 
   commands.addCommand(CommandIDs.closeAndShutdown, {
-    label: 'Close and Shut Down…',
+    label: trans.__('Close and Shut Down…'),
     execute: args => {
       const current = getCurrent(args);
       if (!current) {
         return;
       }
       return showDialog({
-        title: 'Shut down the console?',
-        body: `Are you sure you want to close "${current.title.label}"?`,
+        title: trans.__('Shut down the console?'),
+        body: trans.__(
+          'Are you sure you want to close "%1"?',
+          current.title.label
+        ),
         buttons: [Dialog.cancelButton(), Dialog.warnButton()]
       }).then(result => {
         if (result.button.accept) {
@@ -487,7 +514,7 @@ async function activateConsole(
 
   commands.addCommand(CommandIDs.inject, {
     execute: args => {
-      let path = args['path'];
+      const path = args['path'];
       tracker.find(widget => {
         if (widget.console.sessionContext.session?.path === path) {
           if (args['activate'] !== false) {
@@ -506,13 +533,16 @@ async function activateConsole(
   });
 
   commands.addCommand(CommandIDs.changeKernel, {
-    label: 'Change Kernel…',
+    label: trans.__('Change Kernel…'),
     execute: args => {
-      let current = getCurrent(args);
+      const current = getCurrent(args);
       if (!current) {
         return;
       }
-      return sessionDialogs!.selectKernel(current.console.sessionContext);
+      return sessionDialogs!.selectKernel(
+        current.console.sessionContext,
+        translator
+      );
     },
     isEnabled
   });
@@ -541,12 +571,14 @@ async function activateConsole(
     // Add a close and shutdown command to the file menu.
     mainMenu.fileMenu.closeAndCleaners.add({
       tracker,
-      action: 'Shutdown',
-      name: 'Console',
+      closeAndCleanupLabel: (n: number) => trans.__('Shutdown Console'),
       closeAndCleanup: (current: ConsolePanel) => {
         return showDialog({
-          title: 'Shut down the console?',
-          body: `Are you sure you want to close "${current.title.label}"?`,
+          title: trans.__('Shut down the Console?'),
+          body: trans.__(
+            'Are you sure you want to close "%1"?',
+            current.title.label
+          ),
           buttons: [Dialog.cancelButton(), Dialog.warnButton()]
         }).then(result => {
           if (result.button.accept) {
@@ -563,16 +595,17 @@ async function activateConsole(
     // Add a kernel user to the Kernel menu
     mainMenu.kernelMenu.kernelUsers.add({
       tracker,
+      restartKernelAndClearLabel: n =>
+        trans.__('Restart Kernel and Clear Console'),
       interruptKernel: current => {
-        let kernel = current.console.sessionContext.session?.kernel;
+        const kernel = current.console.sessionContext.session?.kernel;
         if (kernel) {
           return kernel.interrupt();
         }
         return Promise.resolve(void 0);
       },
-      noun: 'Console',
       restartKernel: current =>
-        sessionDialogs!.restart(current.console.sessionContext),
+        sessionDialogs!.restart(current.console.sessionContext, translator),
       restartKernelAndClear: current => {
         return sessionDialogs!
           .restart(current.console.sessionContext)
@@ -584,22 +617,24 @@ async function activateConsole(
           });
       },
       changeKernel: current =>
-        sessionDialogs!.selectKernel(current.console.sessionContext),
+        sessionDialogs!.selectKernel(
+          current.console.sessionContext,
+          translator
+        ),
       shutdownKernel: current => current.console.sessionContext.shutdown()
     } as IKernelMenu.IKernelUser<ConsolePanel>);
 
     // Add a code runner to the Run menu.
     mainMenu.runMenu.codeRunners.add({
       tracker,
-      noun: 'Cell',
-      pluralNoun: 'Cells',
+      runLabel: (n: number) => trans.__('Run Cell'),
       run: current => current.console.execute(true)
     } as IRunMenu.ICodeRunner<ConsolePanel>);
 
     // Add a clearer to the edit menu
     mainMenu.editMenu.clearers.add({
       tracker,
-      noun: 'Console Cells',
+      clearCurrentLabel: (n: number) => trans.__('Clear Console Cell'),
       clearCurrent: (current: ConsolePanel) => {
         return current.console.clear();
       }
@@ -612,8 +647,8 @@ async function activateConsole(
   // affects more than just the run keystroke, we can make this menu title more
   // generic.
   const runShortcutTitles: { [index: string]: string } = {
-    notebook: 'Execute with Shift+Enter',
-    terminal: 'Execute with Enter'
+    notebook: trans.__('Execute with Shift+Enter'),
+    terminal: trans.__('Execute with Enter')
   };
 
   // Add the execute keystroke setting submenu.
@@ -635,7 +670,7 @@ async function activateConsole(
   });
 
   const executeMenu = new Menu({ commands });
-  executeMenu.title.label = 'Console Run Keystroke';
+  executeMenu.title.label = trans.__('Console Run Keystroke');
 
   ['terminal', 'notebook'].forEach(name =>
     executeMenu.addItem({

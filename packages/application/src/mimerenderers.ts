@@ -22,27 +22,26 @@ import { AttachedProperty } from '@lumino/properties';
 import { JupyterFrontEnd, JupyterFrontEndPlugin } from './index';
 
 import { ILayoutRestorer } from './layoutrestorer';
+import { ITranslator } from '@jupyterlab/translation';
 
 /**
  * A class that tracks mime documents.
  */
 export interface IMimeDocumentTracker extends IWidgetTracker<MimeDocument> {}
 
-/* tslint:disable */
 /**
  * The mime document tracker token.
  */
 export const IMimeDocumentTracker = new Token<IMimeDocumentTracker>(
   '@jupyterlab/application:IMimeDocumentTracker'
 );
-/* tslint:enable */
 
 /**
  * Create rendermime plugins for rendermime extension modules.
  */
 export function createRendermimePlugins(
   extensions: IRenderMime.IExtensionModule[]
-): JupyterFrontEndPlugin<void | IMimeDocumentTracker>[] {
+): JupyterFrontEndPlugin<void | IMimeDocumentTracker, any, any>[] {
   const plugins: JupyterFrontEndPlugin<void | IMimeDocumentTracker>[] = [];
 
   const namespace = 'application-mimedocuments';
@@ -98,9 +97,13 @@ export function createRendermimePlugin(
 ): JupyterFrontEndPlugin<void> {
   return {
     id: item.id,
-    requires: [IRenderMimeRegistry],
+    requires: [IRenderMimeRegistry, ITranslator],
     autoStart: true,
-    activate: (app: JupyterFrontEnd, rendermime: IRenderMimeRegistry) => {
+    activate: (
+      app: JupyterFrontEnd,
+      rendermime: IRenderMimeRegistry,
+      translator: ITranslator
+    ) => {
       // Add the mime renderer.
       if (item.rank !== undefined) {
         rendermime.addFactory(item.rendererFactory, item.rank);
@@ -113,7 +116,7 @@ export function createRendermimePlugin(
         return;
       }
 
-      let registry = app.docRegistry;
+      const registry = app.docRegistry;
       let options: IRenderMime.IDocumentWidgetFactoryOptions[] = [];
       if (Array.isArray(item.documentWidgetFactoryOptions)) {
         options = item.documentWidgetFactoryOptions;
@@ -138,7 +141,7 @@ export function createRendermimePlugin(
         const toolbarFactory = option.toolbarFactory
           ? (w: MimeDocument) => option.toolbarFactory!(w.content.renderer)
           : undefined;
-        let factory = new MimeDocumentFactory({
+        const factory = new MimeDocumentFactory({
           renderTimeout: item.renderTimeout,
           dataType: item.dataType,
           rendermime,
@@ -148,7 +151,8 @@ export function createRendermimePlugin(
           fileTypes: option.fileTypes,
           defaultFor: option.defaultFor,
           defaultRendered: option.defaultRendered,
-          toolbarFactory
+          toolbarFactory,
+          translator
         });
         registry.addWidgetFactory(factory);
 

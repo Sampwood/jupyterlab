@@ -2,8 +2,7 @@
   "extends": "../../tsconfigbase",
   "compilerOptions": {
     "outDir": "lib",
-    "rootDir": "src",
-    "strictNullChecks": false
+    "rootDir": "src"
   },
   "include": ["src/*"],
   "references": [
@@ -21,6 +20,9 @@
     },
     {
       "path": "../services"
+    },
+    {
+      "path": "../translation"
     }
   ]
 }

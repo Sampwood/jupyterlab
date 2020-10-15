@@ -1,4 +1,4 @@
-/*-----------------------------------------------------------------------------
+/* -----------------------------------------------------------------------------
 | Copyright (c) Jupyter Development Team.
 | Distributed under the terms of the Modified BSD License.
 |----------------------------------------------------------------------------*/
@@ -13,6 +13,8 @@ import {
   ISanitizer,
   defaultSanitizer
 } from '@jupyterlab/apputils';
+
+import { nullTranslator, ITranslator } from '@jupyterlab/translation';
 
 import { ReadonlyPartialJSONObject } from '@lumino/coreutils';
 
@@ -38,6 +40,7 @@ export class RenderMimeRegistry implements IRenderMimeRegistry {
    */
   constructor(options: RenderMimeRegistry.IOptions = {}) {
     // Parse the options.
+    this.translator = options.translator || nullTranslator;
     this.resolver = options.resolver || null;
     this.linkHandler = options.linkHandler || null;
     this.latexTypesetter = options.latexTypesetter || null;
@@ -45,7 +48,7 @@ export class RenderMimeRegistry implements IRenderMimeRegistry {
 
     // Add the initial factories.
     if (options.initialFactories) {
-      for (let factory of options.initialFactories) {
+      for (const factory of options.initialFactories) {
         this.addFactory(factory);
       }
     }
@@ -70,6 +73,11 @@ export class RenderMimeRegistry implements IRenderMimeRegistry {
    * The LaTeX typesetter for the rendermime.
    */
   readonly latexTypesetter: IRenderMime.ILatexTypesetter | null;
+
+  /**
+   * The application language translator.
+   */
+  readonly translator: ITranslator;
 
   /**
    * The ordered list of mimeTypes.
@@ -97,7 +105,7 @@ export class RenderMimeRegistry implements IRenderMimeRegistry {
   ): string | undefined {
     // Try to find a safe factory first, if preferred.
     if (safe === 'ensure' || safe === 'prefer') {
-      for (let mt of this.mimeTypes) {
+      for (const mt of this.mimeTypes) {
         if (mt in bundle && this._factories[mt].safe) {
           return mt;
         }
@@ -106,7 +114,7 @@ export class RenderMimeRegistry implements IRenderMimeRegistry {
 
     if (safe !== 'ensure') {
       // Otherwise, search for the best factory among all factories.
-      for (let mt of this.mimeTypes) {
+      for (const mt of this.mimeTypes) {
         if (mt in bundle) {
           return mt;
         }
@@ -138,7 +146,8 @@ export class RenderMimeRegistry implements IRenderMimeRegistry {
       resolver: this.resolver,
       sanitizer: this.sanitizer,
       linkHandler: this.linkHandler,
-      latexTypesetter: this.latexTypesetter
+      latexTypesetter: this.latexTypesetter,
+      translator: this.translator
     });
   }
 
@@ -162,12 +171,13 @@ export class RenderMimeRegistry implements IRenderMimeRegistry {
    */
   clone(options: IRenderMimeRegistry.ICloneOptions = {}): RenderMimeRegistry {
     // Create the clone.
-    let clone = new RenderMimeRegistry({
+    const clone = new RenderMimeRegistry({
       resolver: options.resolver || this.resolver || undefined,
       sanitizer: options.sanitizer || this.sanitizer || undefined,
       linkHandler: options.linkHandler || this.linkHandler || undefined,
       latexTypesetter:
-        options.latexTypesetter || this.latexTypesetter || undefined
+        options.latexTypesetter || this.latexTypesetter || undefined,
+      translator: this.translator
     });
 
     // Clone the internal state.
@@ -211,7 +221,7 @@ export class RenderMimeRegistry implements IRenderMimeRegistry {
         rank = 100;
       }
     }
-    for (let mt of factory.mimeTypes) {
+    for (const mt of factory.mimeTypes) {
       this._factories[mt] = factory;
       this._ranks[mt] = { rank, id: this._id++ };
     }
@@ -237,7 +247,7 @@ export class RenderMimeRegistry implements IRenderMimeRegistry {
    * @returns The rank of the mime type or undefined.
    */
   getRank(mimeType: string): number | undefined {
-    let rank = this._ranks[mimeType];
+    const rank = this._ranks[mimeType];
     return rank && rank.rank;
   }
 
@@ -255,7 +265,7 @@ export class RenderMimeRegistry implements IRenderMimeRegistry {
     if (!this._ranks[mimeType]) {
       return;
     }
-    let id = this._id++;
+    const id = this._id++;
     this._ranks[mimeType] = { rank, id };
     this._types = null;
   }
@@ -302,33 +312,52 @@ export namespace RenderMimeRegistry {
      * An optional LaTeX typesetter.
      */
     latexTypesetter?: IRenderMime.ILatexTypesetter;
+
+    /**
+     * The application language translator.
+     */
+    translator?: ITranslator;
   }
 
   /**
-   * A default resolver that uses a session and a contents manager.
+   * A default resolver that uses a given reference path and a contents manager.
    */
   export class UrlResolver implements IRenderMime.IResolver {
     /**
-     * Create a new url resolver for a console.
+     * Create a new url resolver.
      */
     constructor(options: IUrlResolverOptions) {
-      this._session = options.session;
+      if (options.path) {
+        this._path = options.path;
+      } else if (options.session) {
+        this._session = options.session;
+      } else {
+        throw new Error(
+          "Either 'path' or 'session' must be given as a constructor option"
+        );
+      }
       this._contents = options.contents;
+    }
+
+    /**
+     * The path of the object, from which local urls can be derived.
+     */
+    get path(): string {
+      return this._path ?? this._session.path;
+    }
+    set path(value: string) {
+      this._path = value;
     }
 
     /**
      * Resolve a relative url to an absolute url path.
      */
-    resolveUrl(url: string): Promise<string> {
+    async resolveUrl(url: string): Promise<string> {
       if (this.isLocal(url)) {
-        const sc = Private.sessionConnection(this._session);
-        if (!sc) {
-          throw new Error('Cannot resolve local url with no session');
-        }
-        const cwd = encodeURI(PathExt.dirname(sc.path));
+        const cwd = encodeURI(PathExt.dirname(this.path));
         url = PathExt.resolve(cwd, url);
       }
-      return Promise.resolve(url);
+      return url;
     }
 
     /**
@@ -337,12 +366,12 @@ export namespace RenderMimeRegistry {
      * #### Notes
      * This URL may include a query parameter.
      */
-    getDownloadUrl(url: string): Promise<string> {
+    async getDownloadUrl(url: string): Promise<string> {
       if (this.isLocal(url)) {
         // decode url->path before passing to contents api
         return this._contents.getDownloadUrl(decodeURI(url));
       }
-      return Promise.resolve(url);
+      return url;
     }
 
     /**
@@ -360,6 +389,7 @@ export namespace RenderMimeRegistry {
       return URLExt.isLocal(url) || !!this._contents.driveName(path);
     }
 
+    private _path: string;
     private _session: ISessionContext | Session.ISessionConnection;
     private _contents: Contents.IManager;
   }
@@ -369,12 +399,25 @@ export namespace RenderMimeRegistry {
    */
   export interface IUrlResolverOptions {
     /**
-     * The session used by the resolver.
+     * The path providing context for local urls.
      *
      * #### Notes
-     * For convenience, this can be a session context as well.
+     * Either session or path must be given, and path takes precedence.
      */
-    session: ISessionContext | Session.ISessionConnection;
+    path?: string;
+
+    /**
+     * The session used by the resolver.
+     *
+     * @deprecated use the `path` option instead and update it as needed.
+     *
+     * #### Notes
+     * For convenience, this can be a session context as well. Either session
+     * or path must be given, and path takes precedence.
+     *
+     * TODO: remove this option and make `path` required.
+     */
+    session?: ISessionContext | Session.ISessionConnection;
 
     /**
      * The contents manager used by the resolver.
@@ -407,8 +450,8 @@ namespace Private {
    */
   export function sortedTypes(map: RankMap): string[] {
     return Object.keys(map).sort((a, b) => {
-      let p1 = map[a];
-      let p2 = map[b];
+      const p1 = map[a];
+      const p2 = map[b];
       if (p1.rank !== p2.rank) {
         return p1.rank - p2.rank;
       }

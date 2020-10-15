@@ -8,6 +8,8 @@ import {
 
 import { ISettingRegistry, SettingRegistry } from '@jupyterlab/settingregistry';
 
+import { ITranslator } from '@jupyterlab/translation';
+
 import { CommandRegistry } from '@lumino/commands';
 
 import {
@@ -49,8 +51,13 @@ import { DisposableSet, IDisposable } from '@lumino/disposable';
  */
 const shortcuts: JupyterFrontEndPlugin<void> = {
   id: '@jupyterlab/shortcuts-extension:shortcuts',
-  requires: [ISettingRegistry],
-  activate: async (app: JupyterFrontEnd, registry: ISettingRegistry) => {
+  requires: [ISettingRegistry, ITranslator],
+  activate: async (
+    app: JupyterFrontEnd,
+    registry: ISettingRegistry,
+    translator: ITranslator
+  ) => {
+    const trans = translator.load('jupyterlab');
     const { commands } = app;
     let canonical: ISettingRegistry.ISchema | null;
     let loaded: { [name: string]: ISettingRegistry.IShortcut[] } = {};
@@ -64,7 +71,7 @@ const shortcuts: JupyterFrontEndPlugin<void> = {
       loaded = {};
       schema.properties!.shortcuts.default = Object.keys(registry.plugins)
         .map(plugin => {
-          let shortcuts =
+          const shortcuts =
             registry.plugins[plugin]!.schema['jupyter.lab.shortcuts'] || [];
           loaded[plugin] = shortcuts;
           return shortcuts;
@@ -72,7 +79,8 @@ const shortcuts: JupyterFrontEndPlugin<void> = {
         .reduce((acc, val) => acc.concat(val), [])
         .sort((a, b) => a.command.localeCompare(b.command));
 
-      schema.properties!.shortcuts.description = `Note: To disable a system default shortcut,
+      schema.properties!.shortcuts.description = trans.__(
+        `Note: To disable a system default shortcut,
 copy it to User Preferences and add the
 "disabled" key, for example:
 {
@@ -85,16 +93,18 @@ copy it to User Preferences and add the
 }
 
 List of commands followed by keyboard shortcuts:
-${commands}
+%1
 
-List of keyboard shortcuts:`;
+List of keyboard shortcuts:`,
+        commands
+      );
     }
 
     registry.pluginChanged.connect(async (sender, plugin) => {
       if (plugin !== shortcuts.id) {
         // If the plugin changed its shortcuts, reload everything.
-        let oldShortcuts = loaded[plugin];
-        let newShortcuts =
+        const oldShortcuts = loaded[plugin];
+        const newShortcuts =
           registry.plugins[plugin]!.schema['jupyter.lab.shortcuts'] || [];
         if (
           oldShortcuts === undefined ||

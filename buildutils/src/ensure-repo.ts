@@ -1,4 +1,4 @@
-/*-----------------------------------------------------------------------------
+/* -----------------------------------------------------------------------------
 | Copyright (c) Jupyter Development Team.
 | Distributed under the terms of the Modified BSD License.
 |----------------------------------------------------------------------------*/
@@ -12,6 +12,7 @@
  * Manage the metapackage meta package.
  */
 import * as path from 'path';
+import * as fs from 'fs-extra';
 import * as utils from './utils';
 import {
   ensurePackage,
@@ -22,21 +23,55 @@ import {
 type Dict<T> = { [key: string]: T };
 
 // Data to ignore.
-let MISSING: Dict<string[]> = {
-  '@jupyterlab/buildutils': ['path'],
+const MISSING: Dict<string[]> = {
+  '@jupyterlab/buildutils': ['path', 'webpack'],
   '@jupyterlab/testutils': ['fs'],
   '@jupyterlab/vega5-extension': ['vega-embed']
 };
 
-let UNUSED: Dict<string[]> = {
-  '@jupyterlab/apputils': ['@types/react'],
+const UNUSED: Dict<string[]> = {
+  // url is a polyfill for sanitize-html
+  '@jupyterlab/apputils': ['@types/react', 'buffer', 'url'],
   '@jupyterlab/application': ['@fortawesome/fontawesome-free'],
   '@jupyterlab/apputils-extension': ['es6-promise'],
+  '@jupyterlab/builder': [
+    '@lumino/algorithm',
+    '@lumino/application',
+    '@lumino/commands',
+    '@lumino/coreutils',
+    '@lumino/disposable',
+    '@lumino/domutils',
+    '@lumino/dragdrop',
+    '@lumino/messaging',
+    '@lumino/properties',
+    '@lumino/signaling',
+    '@lumino/virtualdom',
+    '@lumino/widgets',
+
+    // The libraries needed for building other extensions.
+    '@babel/core',
+    '@babel/preset-env',
+    'babel-loader',
+    'css-loader',
+    'file-loader',
+    'raw-loader',
+    'style-loader',
+    'svg-url-loader',
+    'terser-webpack-plugin',
+    'to-string-loader',
+    'url-loader',
+    'webpack-cli',
+    'worker-loader'
+  ],
   '@jupyterlab/services': ['node-fetch', 'ws'],
+  '@jupyterlab/rendermime': ['@jupyterlab/mathjax2'],
   '@jupyterlab/testutils': [
     'node-fetch',
     'identity-obj-proxy',
-    'jest-raw-loader'
+    'jest-raw-loader',
+    'markdown-loader-jest',
+    'jest-junit',
+    'jest-summary-reporter'
   ],
   '@jupyterlab/test-csvviewer': ['csv-spectrum'],
   '@jupyterlab/vega5-extension': ['vega', 'vega-lite'],
@@ -44,9 +79,9 @@ let UNUSED: Dict<string[]> = {
 };
 
 // Packages that are allowed to have differing versions
-let DIFFERENT_VERSIONS: Array<string> = ['vega-lite', 'vega', 'vega-embed'];
+const DIFFERENT_VERSIONS: Array<string> = ['vega-lite', 'vega', 'vega-embed'];
 
-let SKIP_CSS: Dict<string[]> = {
+const SKIP_CSS: Dict<string[]> = {
   '@jupyterlab/application': ['@jupyterlab/rendermime'],
   '@jupyterlab/application-extension': ['@jupyterlab/apputils'],
   '@jupyterlab/completer': ['@jupyterlab/codeeditor'],
@@ -67,7 +102,6 @@ let SKIP_CSS: Dict<string[]> = {
   '@jupyterlab/fileeditor': ['@jupyterlab/statusbar'],
   '@jupyterlab/help-extension': ['@jupyterlab/application'],
   '@jupyterlab/shortcuts-extension': ['@jupyterlab/application'],
-  '@jupyterlab/tabmanager-extension': ['@jupyterlab/application'],
   '@jupyterlab/theme-dark-extension': [
     '@jupyterlab/application',
     '@jupyterlab/apputils'
@@ -79,11 +113,11 @@ let SKIP_CSS: Dict<string[]> = {
   '@jupyterlab/ui-extension': ['@blueprintjs/icons']
 };
 
-let pkgData: Dict<any> = {};
-let pkgPaths: Dict<string> = {};
-let pkgNames: Dict<string> = {};
-let depCache: Dict<string> = {};
-let locals: Dict<string> = {};
+const pkgData: Dict<any> = {};
+const pkgPaths: Dict<string> = {};
+const pkgNames: Dict<string> = {};
+const depCache: Dict<string> = {};
+const locals: Dict<string> = {};
 
 /**
  * Ensure the metapackage package.
@@ -91,23 +125,23 @@ let locals: Dict<string> = {};
  * @returns An array of messages for changes.
  */
 function ensureMetaPackage(): string[] {
-  let basePath = path.resolve('.');
-  let mpPath = path.join(basePath, 'packages', 'metapackage');
-  let mpJson = path.join(mpPath, 'package.json');
-  let mpData = utils.readJSONFile(mpJson);
-  let messages: string[] = [];
-  let seen: Dict<boolean> = {};
+  const basePath = path.resolve('.');
+  const mpPath = path.join(basePath, 'packages', 'metapackage');
+  const mpJson = path.join(mpPath, 'package.json');
+  const mpData = utils.readJSONFile(mpJson);
+  const messages: string[] = [];
+  const seen: Dict<boolean> = {};
 
   utils.getCorePaths().forEach(pkgPath => {
     if (path.resolve(pkgPath) === path.resolve(mpPath)) {
       return;
     }
-    let name = pkgNames[pkgPath];
+    const name = pkgNames[pkgPath];
     if (!name) {
       return;
     }
     seen[name] = true;
-    let data = pkgData[name];
+    const data = pkgData[name];
     let valid = true;
 
     // Ensure it is a dependency.
@@ -144,29 +178,50 @@ function ensureMetaPackage(): string[] {
  * Ensure the jupyterlab application package.
  */
 function ensureJupyterlab(): string[] {
-  let basePath = path.resolve('.');
-  let corePath = path.join(basePath, 'dev_mode', 'package.json');
-  let corePackage = utils.readJSONFile(corePath);
+  const basePath = path.resolve('.');
+  const corePath = path.join(basePath, 'dev_mode', 'package.json');
+  const corePackage = utils.readJSONFile(corePath);
 
   corePackage.jupyterlab.extensions = {};
   corePackage.jupyterlab.mimeExtensions = {};
   corePackage.jupyterlab.linkedPackages = {};
-  corePackage.dependencies = {};
+  // start with known external dependencies
+  corePackage.dependencies = Object.assign(
+    {},
+    corePackage.jupyterlab.externalExtensions
+  );
   corePackage.resolutions = {};
 
-  let singletonPackages: string[] = corePackage.jupyterlab.singletonPackages;
+  const singletonPackages: string[] = corePackage.jupyterlab.singletonPackages;
   const coreData = new Map<string, any>();
 
   utils.getCorePaths().forEach(pkgPath => {
-    let dataPath = path.join(pkgPath, 'package.json');
+    const dataPath = path.join(pkgPath, 'package.json');
     let data: any;
     try {
       data = utils.readJSONFile(dataPath);
     } catch (e) {
       return;
     }
+
+    // TODO: reinstate once we update the extension-manager
+    if (data.name === '@jupyterlab/extensionmanager') {
+      return;
+    }
+
     coreData.set(data.name, data);
+
+    // If the package has a tokens.ts file, make sure it is noted as a singleton
+    if (
+      fs.existsSync(path.join(pkgPath, 'src', 'tokens.ts')) &&
+      !singletonPackages.includes(data.name)
+    ) {
+      singletonPackages.push(data.name);
+    }
   });
+
+  // These are not sorted when writing out by default
+  singletonPackages.sort();
 
   // Populate the yarn resolutions. First we make sure direct packages have
   // resolutions.
@@ -191,7 +246,7 @@ function ensureJupyterlab(): string[] {
   });
 
   // At this point, each singleton should have a resolution. Check this.
-  let unresolvedSingletons = singletonPackages.filter(
+  const unresolvedSingletons = singletonPackages.filter(
     pkg => !(pkg in corePackage.resolutions)
   );
   if (unresolvedSingletons.length > 0) {
@@ -231,16 +286,20 @@ function ensureJupyterlab(): string[] {
   });
 
   utils.getLernaPaths().forEach(pkgPath => {
-    let dataPath = path.join(pkgPath, 'package.json');
+    const dataPath = path.join(pkgPath, 'package.json');
     let data: any;
     try {
       data = utils.readJSONFile(dataPath);
     } catch (e) {
       return;
     }
+    // Skip private packages.
+    if (data.private === true) {
+      return;
+    }
 
     // watch all src, build, and test files in the Jupyterlab project
-    let relativePath = utils.ensureUnixPathSep(
+    const relativePath = utils.ensureUnixPathSep(
       path.join('..', path.relative(basePath, pkgPath))
     );
     corePackage.jupyterlab.linkedPackages[data.name] = relativePath;
@@ -254,13 +313,36 @@ function ensureJupyterlab(): string[] {
 }
 
 /**
+ * Ensure buildutils and builder bin files are symlinked
+ */
+function ensureBuildUtils() {
+  const basePath = path.resolve('.');
+  ['builder', 'buildutils'].forEach(packageName => {
+    const utilsPackage = path.join(basePath, packageName, 'package.json');
+    const utilsData = utils.readJSONFile(utilsPackage);
+    for (const name in utilsData.bin) {
+      const src = path.join(basePath, packageName, utilsData.bin[name]);
+      const dest = path.join(basePath, 'node_modules', '.bin', name);
+      try {
+        fs.lstatSync(dest);
+        fs.removeSync(dest);
+      } catch (e) {
+        // no-op
+      }
+      fs.symlinkSync(src, dest, 'file');
+      fs.chmodSync(dest, 0o777);
+    }
+  });
+}
+
+/**
  * Ensure the repo integrity.
  */
 export async function ensureIntegrity(): Promise<boolean> {
-  let messages: Dict<string[]> = {};
+  const messages: Dict<string[]> = {};
 
   // Pick up all the package versions.
-  let paths = utils.getLernaPaths();
+  const paths = utils.getLernaPaths();
 
   // These two are not part of the workspaces but should be kept
   // in sync.
@@ -328,7 +410,7 @@ export async function ensureIntegrity(): Promise<boolean> {
   // Update the metapackage.
   let pkgMessages = ensureMetaPackage();
   if (pkgMessages.length > 0) {
-    let pkgName = '@jupyterlab/metapackage';
+    const pkgName = '@jupyterlab/metapackage';
     if (!messages[pkgName]) {
       messages[pkgName] = [];
     }
@@ -336,18 +418,18 @@ export async function ensureIntegrity(): Promise<boolean> {
   }
 
   // Validate each package.
-  for (let name in locals) {
+  for (const name in locals) {
     // application-top is handled elsewhere
     if (name === '@jupyterlab/application-top') {
       continue;
     }
-    let unused = UNUSED[name] || [];
+    const unused = UNUSED[name] || [];
     // Allow jest-junit to be unused in the test suite.
     if (name.indexOf('@jupyterlab/test-') === 0) {
       unused.push('jest-junit');
     }
 
-    let options: IEnsurePackageOptions = {
+    const options: IEnsurePackageOptions = {
       pkgPath: pkgPaths[name],
       data: pkgData[name],
       depCache,
@@ -362,7 +444,7 @@ export async function ensureIntegrity(): Promise<boolean> {
       options.noUnused = false;
     }
 
-    let pkgMessages = await ensurePackage(options);
+    const pkgMessages = await ensurePackage(options);
     if (pkgMessages.length > 0) {
       messages[name] = pkgMessages;
     }
@@ -371,7 +453,7 @@ export async function ensureIntegrity(): Promise<boolean> {
   // ensure the icon svg imports
   pkgMessages = await ensureUiComponents(pkgPaths['@jupyterlab/ui-components']);
   if (pkgMessages.length > 0) {
-    let pkgName = '@jupyterlab/ui-components';
+    const pkgName = '@jupyterlab/ui-components';
     if (!messages[pkgName]) {
       messages[pkgName] = [];
     }
@@ -379,11 +461,23 @@ export async function ensureIntegrity(): Promise<boolean> {
   }
 
   // Handle the top level package.
-  let corePath = path.resolve('.', 'package.json');
-  let coreData: any = utils.readJSONFile(corePath);
+  const corePath = path.resolve('.', 'package.json');
+  const coreData: any = utils.readJSONFile(corePath);
   if (utils.writePackageData(corePath, coreData)) {
     messages['top'] = ['Update package.json'];
   }
+
+  // Handle the refs in the top level tsconfigdoc.json
+  const tsConfigdocPath = path.resolve('.', 'tsconfigdoc.json');
+  const tsConfigdocData = utils.readJSONFile(tsConfigdocPath);
+  tsConfigdocData.references = [];
+  utils.getCorePaths().forEach(pth => {
+    tsConfigdocData.references.push({ path: './' + path.relative('.', pth) });
+  });
+  utils.writeJSONFile(tsConfigdocPath, tsConfigdocData);
+
+  // Handle buildutils
+  ensureBuildUtils();
 
   // Handle the JupyterLab application top package.
   pkgMessages = ensureJupyterlab();
@@ -393,21 +487,21 @@ export async function ensureIntegrity(): Promise<boolean> {
 
   // Handle any messages.
   if (Object.keys(messages).length > 0) {
-    console.log(JSON.stringify(messages, null, 2));
+    console.debug(JSON.stringify(messages, null, 2));
     if (process.argv.indexOf('--force') !== -1) {
-      console.log(
+      console.debug(
         '\n\nPlease run `jlpm run integrity` locally and commit the changes'
       );
       process.exit(1);
     }
     utils.run('jlpm install');
-    console.log('\n\nMade integrity changes!');
-    console.log('Please commit the changes by running:');
-    console.log('git commit -a -m "Package integrity updates"');
+    console.debug('\n\nMade integrity changes!');
+    console.debug('Please commit the changes by running:');
+    console.debug('git commit -a -m "Package integrity updates"');
     return false;
   }
 
-  console.log('Repo integrity verified!');
+  console.debug('Repo integrity verified!');
   return true;
 }
 

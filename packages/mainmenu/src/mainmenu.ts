@@ -1,6 +1,8 @@
 // Copyright (c) Jupyter Development Team.
 // Distributed under the terms of the Modified BSD License.
 
+import { MenuSvg } from '@jupyterlab/ui-components';
+
 import { ArrayExt } from '@lumino/algorithm';
 
 import { CommandRegistry } from '@lumino/commands';
@@ -43,11 +45,11 @@ export class MainMenu extends MenuBar implements IMainMenu {
     this.viewMenu = new ViewMenu({ commands });
     this.tabsMenu = new TabsMenu({ commands });
 
-    this.addMenu(this.fileMenu.menu, { rank: 0 });
-    this.addMenu(this.editMenu.menu, { rank: 1 });
-    this.addMenu(this.viewMenu.menu, { rank: 2 });
-    this.addMenu(this.runMenu.menu, { rank: 3 });
-    this.addMenu(this.kernelMenu.menu, { rank: 4 });
+    this.addMenu(this.fileMenu.menu, { rank: 1 });
+    this.addMenu(this.editMenu.menu, { rank: 2 });
+    this.addMenu(this.viewMenu.menu, { rank: 3 });
+    this.addMenu(this.runMenu.menu, { rank: 4 });
+    this.addMenu(this.kernelMenu.menu, { rank: 5 });
     this.addMenu(this.tabsMenu.menu, { rank: 500 });
     this.addMenu(this.settingsMenu.menu, { rank: 999 });
     this.addMenu(this.helpMenu.menu, { rank: 1000 });
@@ -97,13 +99,16 @@ export class MainMenu extends MenuBar implements IMainMenu {
    * Add a new menu to the main menu bar.
    */
   addMenu(menu: Menu, options: IMainMenu.IAddOptions = {}): void {
+    // override default renderer with svg-supporting renderer
+    MenuSvg.overrideDefaultRenderer(menu);
+
     if (ArrayExt.firstIndexOf(this.menus, menu) > -1) {
       return;
     }
 
-    let rank = 'rank' in options ? options.rank : 100;
-    let rankItem = { menu, rank };
-    let index = ArrayExt.upperBound(this._items, rankItem, Private.itemCmp);
+    const rank = 'rank' in options ? options.rank : 100;
+    const rankItem = { menu, rank };
+    const index = ArrayExt.upperBound(this._items, rankItem, Private.itemCmp);
 
     // Upon disposal, remove the menu and its rank reference.
     menu.disposed.connect(this._onMenuDisposed, this);
@@ -135,7 +140,7 @@ export class MainMenu extends MenuBar implements IMainMenu {
    */
   private _onMenuDisposed(menu: Menu): void {
     this.removeMenu(menu);
-    let index = ArrayExt.findFirstIndex(
+    const index = ArrayExt.findFirstIndex(
       this._items,
       item => item.menu === menu
     );

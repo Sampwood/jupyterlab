@@ -1,5 +1,9 @@
 // Copyright (c) Jupyter Development Team.
 // Distributed under the terms of the Modified BSD License.
+/**
+ * @packageDocumentation
+ * @module codemirror-extension
+ */
 
 import CodeMirror from 'codemirror';
 
@@ -69,7 +73,7 @@ const services: JupyterFrontEndPlugin<IEditorServices> = {
  */
 const commands: JupyterFrontEndPlugin<void> = {
   id: '@jupyterlab/codemirror-extension:commands',
-  requires: [IEditorTracker, ISettingRegistry, ITranslator],
+  requires: [IEditorTracker, ISettingRegistry, ITranslator, ICodeMirror],
   optional: [IMainMenu],
   activate: activateEditorCommands,
   autoStart: true
@@ -151,6 +155,13 @@ class CodeMirrorSingleton implements ICodeMirror {
   get CodeMirror() {
     return CodeMirror;
   }
+
+  async ensureVimKeymap() {
+    if (!('Vim' in (CodeMirror as any))) {
+      // @ts-expect-error
+      await import('codemirror/keymap/vim.js');
+    }
+  }
 }
 
 /**
@@ -168,6 +179,7 @@ function activateEditorCommands(
   tracker: IEditorTracker,
   settingRegistry: ISettingRegistry,
   translator: ITranslator,
+  codeMirror: ICodeMirror,
   mainMenu: IMainMenu | null
 ): void {
   const trans = translator.load('jupyterlab');
@@ -192,8 +204,7 @@ function activateEditorCommands(
 
     // Lazy loading of vim mode
     if (keyMap === 'vim') {
-      // @ts-expect-error
-      await import('codemirror/keymap/vim.js');
+      await codeMirror.ensureVimKeymap();
     }
 
     theme = (settings.get('theme').composite as string | null) || theme;

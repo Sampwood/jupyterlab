@@ -15,7 +15,7 @@ import {
   ThemeManager
 } from '@jupyterlab/apputils';
 
-import { URLExt } from '@jupyterlab/coreutils';
+import { PageConfig, URLExt } from '@jupyterlab/coreutils';
 
 import { IMainMenu } from '@jupyterlab/mainmenu';
 
@@ -29,6 +29,8 @@ namespace CommandIDs {
   export const changeTheme = 'apputils:change-theme';
 
   export const themeScrollbars = 'apputils:theme-scrollbars';
+
+  export const changeFont = 'apputils:change-font';
 
   export const incrFontSize = 'apputils:incr-font-size';
 
@@ -52,7 +54,7 @@ export const themesPlugin: JupyterFrontEndPlugin<IThemeManager> = {
     const trans = translator.load('jupyterlab');
     const host = app.shell;
     const commands = app.commands;
-    const url = URLExt.join(paths.urls.base, paths.urls.themes);
+    const url = URLExt.join(PageConfig.getBaseUrl(), paths.urls.themes);
     const key = themesPlugin.id;
     const manager = new ThemeManager({
       key,
@@ -83,9 +85,6 @@ export const themesPlugin: JupyterFrontEndPlugin<IThemeManager> = {
         );
       }
 
-      // Set any CSS overrides
-      manager.loadCSSOverrides();
-
       commands.notifyCommandChanged(CommandIDs.changeTheme);
     });
 
@@ -111,6 +110,15 @@ export const themesPlugin: JupyterFrontEndPlugin<IThemeManager> = {
       label: trans.__('Theme Scrollbars'),
       isToggled: () => manager.isToggledThemeScrollbars(),
       execute: () => manager.toggleThemeScrollbars()
+    });
+
+    commands.addCommand(CommandIDs.changeFont, {
+      label: args =>
+        args['enabled'] ? `${args['font']}` : trans.__('waiting for fonts'),
+      isEnabled: args => args['enabled'] as boolean,
+      isToggled: args => manager.getCSS(args['key'] as string) === args['font'],
+      execute: args =>
+        manager.setCSSOverride(args['key'] as string, args['font'] as string)
     });
 
     commands.addCommand(CommandIDs.incrFontSize, {

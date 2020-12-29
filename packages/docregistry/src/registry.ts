@@ -1077,12 +1077,6 @@ export namespace DocumentRegistry {
      * This field may be used or ignored depending on shell implementation.
      */
     rank?: number;
-
-    /**
-     * If the document manager is in single document mode, open the document in
-     * a new browser tab and JupyterLab workspace.
-     */
-    maybeNewWorkspace?: boolean;
   }
 
   /**
@@ -1368,7 +1362,7 @@ export namespace DocumentRegistry {
         icon: markdownIcon
       },
       {
-        name: 'pdf',
+        name: 'PDF',
         displayName: trans.__('PDF File'),
         extensions: ['.pdf'],
         mimeTypes: ['application/pdf'],

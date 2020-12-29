@@ -13,12 +13,11 @@ run ``python main.py``.
 """
 import os
 import json
-from jinja2 import FileSystemLoader
-from jupyter_server.base.handlers import JupyterHandler, FileFindHandler
+
+from jupyterlab_server import LabServerApp
+from jupyter_server.base.handlers import JupyterHandler
 from jupyter_server.extension.handler import ExtensionHandlerMixin, ExtensionHandlerJinjaMixin
-from jupyterlab_server import LabServerApp, LabConfig
 from jupyter_server.utils import url_path_join as ujoin
-from traitlets import Unicode
 
 HERE = os.path.dirname(__file__)
 
@@ -81,6 +80,7 @@ class ExampleApp(LabServerApp):
     def initialize_handlers(self):
         """Add example handler to Lab Server's handler list.
         """
+        super().initialize_handlers()
         self.handlers.append(('/example', ExampleHandler))
 
 

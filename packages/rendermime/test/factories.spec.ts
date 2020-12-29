@@ -31,7 +31,7 @@ function createModel(
 }
 
 function encodeChars(txt: string): string {
-  return txt.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;');
+  return txt.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
 const sanitizer = defaultSanitizer;
@@ -248,7 +248,7 @@ describe('rendermime/factories', () => {
         expect(w.node.innerHTML).toBe(source);
       });
 
-      it('it should be re-renderable', async () => {
+      it('should be re-renderable', async () => {
         const f = markdownRendererFactory;
         const source = '<p>hello</p>';
         const mimeType = 'text/markdown';

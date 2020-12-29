@@ -1,7 +1,7 @@
 // Copyright (c) Jupyter Development Team.
 // Distributed under the terms of the Modified BSD License.
 
-import * as posix from 'path-posix';
+import * as posix from 'path';
 
 /**
  * The namespace for path-related functions.
@@ -17,7 +17,7 @@ export namespace PathExt {
    */
   export function join(...paths: string[]): string {
     const path = posix.join(...paths);
-    return path === '.' ? '' : removeSlash(posix.join(...paths));
+    return path === '.' ? '' : removeSlash(path);
   }
 
   /**

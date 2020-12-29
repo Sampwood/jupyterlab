@@ -38,23 +38,26 @@ fi
 
 
 if [[ $GROUP == docs ]]; then
-    # Build the tutorial docs
+    # Build the docs (includes API docs)
     pushd docs
-    pip install -r ./requirements.txt
+    conda env create -f environment.yml
+    conda init --all
+    source $CONDA/bin/activate jupyterlab_documentation
     make html
+    conda deactivate
     popd
-
-    # Build the API docs
-    jlpm build:packages
-    jlpm docs
 fi
 
 if [[ $GROUP == linkcheck ]]; then
-    # Build the tutorial docs
+    # Build the docs
     pushd docs
-    pip install -r ./requirements.txt
+    conda env create -f environment.yml
+    conda init --all
+    source $CONDA/bin/activate jupyterlab_documentation
     make html
     popd
+
+    pip install -e ".[test]"
 
     # Run the link check on the built html files
     CACHE_DIR="${HOME}/.cache/pytest-link-check"
@@ -64,12 +67,14 @@ if [[ $GROUP == linkcheck ]]; then
     # Expire links after a week
     LINKS_EXPIRE=604800
     args="--check-links --check-links-cache --check-links-cache-expire-after ${LINKS_EXPIRE} --check-links-cache-name ${CACHE_DIR}/cache"
-    args="--ignore docs/build/html/genindex.html --ignore docs/build/html/search.html ${args}"
+    args="--ignore docs/build/html/genindex.html --ignore docs/build/html/search.html --ignore docs/build/html/api ${args}"
     py.test $args --links-ext .html -k .html docs/build/html || py.test $args --links-ext .html -k .html --lf docs/build/html
 
     # Run the link check on md files - allow for a link to fail once (--lf means only run last failed)
     args="--check-links --check-links-cache --check-links-cache-expire-after ${LINKS_EXPIRE} --check-links-cache-name ${CACHE_DIR}/cache"
     py.test $args --links-ext .md -k .md . || py.test $args --links-ext .md -k .md --lf .
+
+    conda deactivate
 fi
 
 
@@ -169,17 +174,17 @@ if [[ $GROUP == usage ]]; then
     jupyter lab build --debug
     jupyter lab path --debug
     pushd jupyterlab/tests/mock_packages
-    jupyter labextension link extension --no-build --debug
-    jupyter labextension unlink extension --no-build --debug
-    jupyter labextension link extension --no-build --debug
-    jupyter labextension unlink  @jupyterlab/mock-extension --no-build --debug
+    jupyter labextension link mimeextension --no-build --debug
+    jupyter labextension unlink mimeextension --no-build --debug
+    jupyter labextension link mimeextension --no-build --debug
+    jupyter labextension unlink  @jupyterlab/mock-mime-extension --no-build --debug
     # Test with a full install
-    jupyter labextension install extension  --no-build --debug
+    jupyter labextension install mimeextension  --no-build --debug
     jupyter labextension list --debug
-    jupyter labextension disable @jupyterlab/mock-extension --debug
-    jupyter labextension enable @jupyterlab/mock-extension --debug
+    jupyter labextension disable @jupyterlab/mock-mime-extension --debug
+    jupyter labextension enable @jupyterlab/mock-mime-extension --debug
     jupyter labextension disable @jupyterlab/notebook-extension --debug
-    jupyter labextension uninstall @jupyterlab/mock-extension --no-build --debug
+    jupyter labextension uninstall @jupyterlab/mock-mime-extension --no-build --debug
     jupyter labextension uninstall @jupyterlab/notebook-extension --no-build --debug
     # Test with a dynamic install
     jupyter labextension develop extension --debug
@@ -193,8 +198,8 @@ if [[ $GROUP == usage ]]; then
     jupyter labextension enable @jupyterlab/mock-extension --debug
     jupyter labextension uninstall @jupyterlab/mock-extension --debug
     jupyter labextension list 1>labextensions 2>&1
-    # bail if mock-extension was listed
-    cat labextensions | grep -q "mock-extension" && exit 1
+    # check the federated extension is still listed after jupyter labextension uninstall
+    cat labextensions | grep -q "mock-extension"
     popd
 
     jupyter lab workspaces export > workspace.json --debug
@@ -319,6 +324,71 @@ if [[ $GROUP == usage ]]; then
     jupyter lab clean --settings
     jupyter lab clean --static
     jupyter lab clean --all
+fi
+
+if [[ $GROUP == interop ]]; then
+    cd jupyterlab/tests/mock_packages/interop
+
+    # Install a source extension that depends on a prebuilt extension
+    pushd token
+    jupyter labextension link . --no-build
+    popd
+    pushd provider
+    jupyter labextension build .
+    pip install .
+    popd
+    pushd consumer
+    jupyter labextension install .
+    popd
+    jupyter labextension list 1>labextensions 2>&1
+    cat labextensions | grep -q "@jupyterlab/mock-consumer.*OK"
+    cat labextensions | grep -q "@jupyterlab/mock-provider.*OK"
+
+    python -m jupyterlab.browser_check
+
+    # Clear install
+    pip uninstall -y jlab_mock_provider
+    jupyter lab clean --all
+
+    # Install a prebuilt extension that depends on a source extension
+    pushd token
+    jupyter labextension link . --no-build
+    popd
+    pushd provider
+    jupyter labextension install .
+    popd
+    pushd consumer
+    jupyter labextension build .
+    pip install .
+    popd
+    jupyter labextension list 1>labextensions 2>&1
+    cat labextensions | grep -q "@jupyterlab/mock-consumer.*OK"
+    cat labextensions | grep -q "@jupyterlab/mock-provider.*OK"
+    python -m jupyterlab.browser_check
+
+    # Clear install
+    pip uninstall -y jlab_mock_consumer
+    jupyter lab clean --all
+
+    # Install the mock consumer as a source extension and as a
+    # prebuilt extension to test shadowing
+    pushd token
+    jupyter labextension link . --no-build
+    popd
+    pushd provider
+    jupyter labextension install . --no-build
+    popd
+    pushd consumer
+    # Need to install source first because it would get ignored
+    # if installed after
+    jupyter labextension install .
+    jupyter labextension build .
+    pip install .
+    popd
+    jupyter labextension list 1>labextensions 2>&1
+    cat labextensions | grep -q "@jupyterlab/mock-consumer.*OK"
+    cat labextensions | grep -q "@jupyterlab/mock-provider.*OK"
+    python -m jupyterlab.browser_check
 fi
 
 if [[ $GROUP == nonode ]]; then
